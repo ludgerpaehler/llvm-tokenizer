@@ -31,5 +31,5 @@ RUN apt-get -q update \
     && curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key|apt-key add - \
     && apt-add-repository "deb http://apt.llvm.org/`lsb_release -cs`/ llvm-toolchain-`lsb_release -cs`-$LLVM_VERSION main" || true \
     && apt-get -q update \
-    && apt-get install -y llvm-$LLVM_VERSION llvm-$LLVM_VERSION-dev
+    && apt-get install -y llvm-$LLVM_VERSION llvm-$LLVM_VERSION-dev clang-format-$LLVM_VERSION
 
