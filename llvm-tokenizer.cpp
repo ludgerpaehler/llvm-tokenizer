@@ -7,6 +7,7 @@
 #include <llvm/Support/SourceMgr.h>
 
 #include <iostream>
+#include <vector>
 
 using namespace llvm;
 
@@ -16,37 +17,69 @@ static cl::opt<std::string> InputFilename(cl::Positional,
 
 static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 
-void processOperand(Value *Operand) {
+using TokenType = unsigned;
+
+enum class ReservedTokens : TokenType {
+  // Set the first token to one, so the zeroth token can be user-defined.
+  PaddingToken = 1,
+  InstructionOperandToken,
+  ConstantOperandToken,
+  BasicBlockOperandToken,
+  GlobalValueOperandToken,
+  MetadataAsValueOperandToken,
+  InlineASMOperandToken,
+  ArgumentOperandToken,
+  UnknownOperandToken,
+  OpcodeOffset
+};
+
+struct Token {
+  TokenType Type;
+
+  Token(TokenType _Type) : Type(_Type) {}
+};
+
+TokenType GetReservedToken(ReservedTokens ReservedToken) {
+  return static_cast<TokenType>(ReservedToken);
+}
+
+Token processOperand(Value *Operand) {
   if (const Instruction *I = dyn_cast<Instruction>(Operand)) {
-    std::cout << "operand:instruction:masked ";
+    return Token(GetReservedToken(ReservedTokens::InstructionOperandToken));
   } else if (auto *ConstantOperand = llvm::dyn_cast<llvm::Constant>(Operand)) {
-    std::cout << "operand:constant:masked ";
+    return Token(GetReservedToken(ReservedTokens::ConstantOperandToken));
   } else if (const BasicBlock *BB = dyn_cast<BasicBlock>(Operand)) {
-    std::cout << "operand:basicblock:masked ";
+    return Token(GetReservedToken(ReservedTokens::BasicBlockOperandToken));
   } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
-    std::cout << "operand:globalvalue:masked ";
+    return Token(GetReservedToken(ReservedTokens::GlobalValueOperandToken));
   } else if (const MetadataAsValue *V = dyn_cast<MetadataAsValue>(Operand)) {
-    std::cout << "operand:metadataasvalue:masked ";
+    return Token(GetReservedToken(ReservedTokens::MetadataAsValueOperandToken));
   } else if (isa<InlineAsm>(Operand)) {
-    std::cout << "operand:inlineasm:masked ";
+    return Token(GetReservedToken(ReservedTokens::InlineASMOperandToken));
   } else if (isa<Argument>(Operand)) {
-    std::cout << "operand:argument:masked ";
+    return Token(GetReservedToken(ReservedTokens::UnknownOperandToken));
   } else {
-    std::cout << "operand:unknown ";
+    return Token(GetReservedToken(ReservedTokens::UnknownOperandToken));
   }
 }
 
-void processFunction(Function &IRFunction) {
+Token processOpcode(Instruction &IRInstruction) {
+  return Token(GetReservedToken(ReservedTokens::OpcodeOffset) +
+               IRInstruction.getOpcode());
+}
+
+std::vector<Token> processFunction(Function &IRFunction) {
+  std::vector<Token> FunctionTokens;
   for (BasicBlock &IRBB : IRFunction) {
     for (Instruction &IRInstruction : IRBB) {
-      std::cout << IRInstruction.getOpcodeName() << " ";
+      FunctionTokens.push_back(processOpcode(IRInstruction));
       for (unsigned i = 0; i < IRInstruction.getNumOperands(); ++i) {
         Value *Operand = IRInstruction.getOperand(i);
-        processOperand(Operand);
+        FunctionTokens.push_back(processOperand(Operand));
       }
-      std::cout << "\n";
     }
   }
+  return FunctionTokens;
 }
 
 int main(int argc, char **argv) {
@@ -69,7 +102,10 @@ int main(int argc, char **argv) {
   for (Function &IRFunction : *IRModule) {
     std::cout << "*** Starting new function: " << IRFunction.getName().data()
               << " ***\n";
-    processFunction(IRFunction);
+    std::vector<Token> FunctionTokens = processFunction(IRFunction);
+    for (Token SingleToken : FunctionTokens) {
+      std::cout << static_cast<unsigned>(SingleToken.Type) << "\n";
+    }
   }
 
   return 0;
