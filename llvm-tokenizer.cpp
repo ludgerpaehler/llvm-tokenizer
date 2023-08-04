@@ -112,8 +112,8 @@ Token processOperand(
 }
 
 Token processOpcode(Instruction &IRInstruction, size_t InstructionIndex) {
-  return Token(TokenType::OpcodeToken, IRInstruction.getOpcode(),
-               InstructionIndex);
+  return Token(TokenType::OpcodeToken, InstructionIndex,
+               IRInstruction.getOpcode());
 }
 
 std::vector<Token> processFunction(Function &IRFunction) {
@@ -163,6 +163,13 @@ int main(int argc, char **argv) {
     for (Token SingleToken : FunctionTokens) {
       Writer->objectBegin();
       Writer->printString("type", GetTokenTypeName(SingleToken.Type));
+      Writer->printNumber("instruction_index", SingleToken.InstructionIndex);
+      if (SingleToken.Type == TokenType::OpcodeToken) {
+        Writer->printNumber("opcode", SingleToken.Data.Opcode);
+      } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
+        Writer->printNumber("instruction_reference",
+                            SingleToken.Data.ReferencedInstructionIndex);
+      }
       Writer->objectEnd();
     }
     Writer->arrayEnd();
