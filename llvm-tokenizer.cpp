@@ -17,11 +17,8 @@ static cl::opt<std::string> InputFilename(cl::Positional,
 
 static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 
-using TokenType = unsigned;
-
-enum class ReservedTokens : TokenType {
-  // Set the first token to one, so the zeroth token can be user-defined.
-  PaddingToken = 1,
+enum TokenType {
+  PaddingToken,
   InstructionOperandToken,
   ConstantOperandToken,
   BasicBlockOperandToken,
@@ -30,42 +27,45 @@ enum class ReservedTokens : TokenType {
   InlineASMOperandToken,
   ArgumentOperandToken,
   UnknownOperandToken,
-  OpcodeOffset
+  OpcodeToken
+};
+
+union TokenData {
+  unsigned Opcode;
 };
 
 struct Token {
   TokenType Type;
+  TokenData Data;
 
   Token(TokenType _Type) : Type(_Type) {}
+  Token(TokenType _Type, unsigned Opcode) : Type(_Type) {
+    Data.Opcode = Opcode;
+  }
 };
-
-TokenType GetReservedToken(ReservedTokens ReservedToken) {
-  return static_cast<TokenType>(ReservedToken);
-}
 
 Token processOperand(Value *Operand) {
   if (const Instruction *I = dyn_cast<Instruction>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::InstructionOperandToken));
+    return Token(TokenType::InstructionOperandToken);
   } else if (auto *ConstantOperand = llvm::dyn_cast<llvm::Constant>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::ConstantOperandToken));
+    return Token(TokenType::ConstantOperandToken);
   } else if (const BasicBlock *BB = dyn_cast<BasicBlock>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::BasicBlockOperandToken));
+    return Token(TokenType::BasicBlockOperandToken);
   } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::GlobalValueOperandToken));
+    return Token(TokenType::GlobalValueOperandToken);
   } else if (const MetadataAsValue *V = dyn_cast<MetadataAsValue>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::MetadataAsValueOperandToken));
+    return Token(TokenType::MetadataAsValueOperandToken);
   } else if (isa<InlineAsm>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::InlineASMOperandToken));
+    return Token(TokenType::InlineASMOperandToken);
   } else if (isa<Argument>(Operand)) {
-    return Token(GetReservedToken(ReservedTokens::UnknownOperandToken));
+    return Token(TokenType::UnknownOperandToken);
   } else {
-    return Token(GetReservedToken(ReservedTokens::UnknownOperandToken));
+    return Token(TokenType::UnknownOperandToken);
   }
 }
 
 Token processOpcode(Instruction &IRInstruction) {
-  return Token(GetReservedToken(ReservedTokens::OpcodeOffset) +
-               IRInstruction.getOpcode());
+  return Token(TokenType::OpcodeToken, IRInstruction.getOpcode());
 }
 
 std::vector<Token> processFunction(Function &IRFunction) {
