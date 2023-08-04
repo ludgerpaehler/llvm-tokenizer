@@ -1,7 +1,8 @@
-#include "llvm/Support/CommandLine.h"
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -22,7 +23,9 @@ static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 enum TokenType {
   PaddingToken,
   InstructionOperandToken,
-  ConstantOperandToken,
+  ConstantIntegerOperandToken,
+  ConstantFloatOperandToken,
+  UnknownConstantOperandToken,
   BasicBlockOperandToken,
   GlobalValueOperandToken,
   MetadataAsValueOperandToken,
@@ -38,8 +41,12 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
     return "padding";
   case TokenType::InstructionOperandToken:
     return "instruction_operand";
-  case TokenType::ConstantOperandToken:
-    return "constant_operand";
+  case TokenType::ConstantIntegerOperandToken:
+    return "constant_integer_operand";
+  case TokenType::ConstantFloatOperandToken:
+    return "constant_float_operand";
+  case TokenType::UnknownConstantOperandToken:
+    return "unknown_constant_operand";
   case TokenType::BasicBlockOperandToken:
     return "basic_block_operand";
   case TokenType::GlobalValueOperandToken:
@@ -61,6 +68,8 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
 union TokenData {
   unsigned Opcode;
   size_t ReferencedInstructionIndex;
+  uint64_t ConstantIntegerValue;
+  double ConstantFloatValue;
 };
 
 struct Token {
@@ -94,8 +103,21 @@ Token processOperand(
     }
     return InstructionOperandToken;
     return Token(TokenType::InstructionOperandToken, InstructionIndex);
-  } else if (auto *ConstantOperand = llvm::dyn_cast<llvm::Constant>(Operand)) {
-    return Token(TokenType::ConstantOperandToken, InstructionIndex);
+  } else if (const Constant *ConstantOperand = dyn_cast<Constant>(Operand)) {
+    Token ConstantOperandToken =
+        Token(TokenType::UnknownConstantOperandToken, InstructionIndex);
+    if (const ConstantInt *ConstantInteger =
+            dyn_cast<ConstantInt>(ConstantOperand)) {
+      ConstantOperandToken.Type = TokenType::ConstantIntegerOperandToken;
+      ConstantOperandToken.Data.ConstantIntegerValue =
+          ConstantInteger->getValue().getLimitedValue();
+    } else if (const ConstantFP *ConstantFloat =
+                   dyn_cast<ConstantFP>(ConstantOperand)) {
+      ConstantOperandToken.Type = TokenType::ConstantFloatOperandToken;
+      ConstantOperandToken.Data.ConstantFloatValue =
+          ConstantFloat->getValue().convertToDouble();
+    }
+    return ConstantOperandToken;
   } else if (const BasicBlock *BB = dyn_cast<BasicBlock>(Operand)) {
     return Token(TokenType::BasicBlockOperandToken, InstructionIndex);
   } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
@@ -169,7 +191,12 @@ int main(int argc, char **argv) {
       } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
         Writer->printNumber("instruction_reference",
                             SingleToken.Data.ReferencedInstructionIndex);
-      }
+      } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
+        Writer->printNumber("integer_constant",
+                            SingleToken.Data.ConstantIntegerValue);
+      } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
+				//Writer->printNumber("float_constant", (double)SingleToken.Data.ConstantFloatValue);
+			}
       Writer->objectEnd();
     }
     Writer->arrayEnd();
