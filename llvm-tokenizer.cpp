@@ -195,8 +195,9 @@ int main(int argc, char **argv) {
         Writer->printNumber("integer_constant",
                             SingleToken.Data.ConstantIntegerValue);
       } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
-				//Writer->printNumber("float_constant", (double)SingleToken.Data.ConstantFloatValue);
-			}
+        Writer->printNumber("float_constant",
+                            (double)SingleToken.Data.ConstantFloatValue);
+      }
       Writer->objectEnd();
     }
     Writer->arrayEnd();
