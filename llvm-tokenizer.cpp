@@ -7,6 +7,7 @@
 #include <llvm/Support/SourceMgr.h>
 
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 
 using namespace llvm;
@@ -32,51 +33,76 @@ enum TokenType {
 
 union TokenData {
   unsigned Opcode;
+  size_t ReferencedInstructionIndex;
 };
 
 struct Token {
   TokenType Type;
   TokenData Data;
+  size_t InstructionIndex;
 
-  Token(TokenType _Type) : Type(_Type) {}
-  Token(TokenType _Type, unsigned Opcode) : Type(_Type) {
+  Token(TokenType _Type, size_t _InstructionIndex)
+      : Type(_Type), InstructionIndex(_InstructionIndex) {}
+  Token(TokenType _Type, size_t _InstructionIndex, unsigned Opcode)
+      : Type(_Type), InstructionIndex(_InstructionIndex) {
     Data.Opcode = Opcode;
   }
 };
 
-Token processOperand(Value *Operand) {
-  if (const Instruction *I = dyn_cast<Instruction>(Operand)) {
-    return Token(TokenType::InstructionOperandToken);
+Token processOperand(
+    Value *Operand, size_t InstructionIndex,
+    std::unordered_map<Value *, size_t> &InstructionIndexMapping) {
+  if (Instruction *I = dyn_cast<Instruction>(Operand)) {
+    Token InstructionOperandToken =
+        Token(TokenType::InstructionOperandToken, InstructionIndex);
+    auto InstructionIndexMappingItr =
+        InstructionIndexMapping.find(static_cast<Value *>(I));
+    if (InstructionIndexMappingItr != InstructionIndexMapping.end()) {
+      // TODO(boomanaiden154): See how often this case occurs and find out a
+      // better way to deal with it.
+      InstructionOperandToken.Data.ReferencedInstructionIndex = 0;
+    } else {
+      InstructionOperandToken.Data.ReferencedInstructionIndex =
+          InstructionIndexMappingItr->second;
+    }
+    return InstructionOperandToken;
+    return Token(TokenType::InstructionOperandToken, InstructionIndex);
   } else if (auto *ConstantOperand = llvm::dyn_cast<llvm::Constant>(Operand)) {
-    return Token(TokenType::ConstantOperandToken);
+    return Token(TokenType::ConstantOperandToken, InstructionIndex);
   } else if (const BasicBlock *BB = dyn_cast<BasicBlock>(Operand)) {
-    return Token(TokenType::BasicBlockOperandToken);
+    return Token(TokenType::BasicBlockOperandToken, InstructionIndex);
   } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
-    return Token(TokenType::GlobalValueOperandToken);
+    return Token(TokenType::GlobalValueOperandToken, InstructionIndex);
   } else if (const MetadataAsValue *V = dyn_cast<MetadataAsValue>(Operand)) {
-    return Token(TokenType::MetadataAsValueOperandToken);
+    return Token(TokenType::MetadataAsValueOperandToken, InstructionIndex);
   } else if (isa<InlineAsm>(Operand)) {
-    return Token(TokenType::InlineASMOperandToken);
+    return Token(TokenType::InlineASMOperandToken, InstructionIndex);
   } else if (isa<Argument>(Operand)) {
-    return Token(TokenType::UnknownOperandToken);
+    return Token(TokenType::UnknownOperandToken, InstructionIndex);
   } else {
-    return Token(TokenType::UnknownOperandToken);
+    return Token(TokenType::UnknownOperandToken, InstructionIndex);
   }
 }
 
-Token processOpcode(Instruction &IRInstruction) {
-  return Token(TokenType::OpcodeToken, IRInstruction.getOpcode());
+Token processOpcode(Instruction &IRInstruction, size_t InstructionIndex) {
+  return Token(TokenType::OpcodeToken, IRInstruction.getOpcode(),
+               InstructionIndex);
 }
 
 std::vector<Token> processFunction(Function &IRFunction) {
   std::vector<Token> FunctionTokens;
+  std::unordered_map<Value *, size_t> InstructionIndexMapping;
+  size_t InstructionIndex = 0;
   for (BasicBlock &IRBB : IRFunction) {
     for (Instruction &IRInstruction : IRBB) {
-      FunctionTokens.push_back(processOpcode(IRInstruction));
+      FunctionTokens.push_back(processOpcode(IRInstruction, InstructionIndex));
+      InstructionIndexMapping[&IRInstruction] = InstructionIndex;
       for (unsigned i = 0; i < IRInstruction.getNumOperands(); ++i) {
         Value *Operand = IRInstruction.getOperand(i);
-        FunctionTokens.push_back(processOperand(Operand));
+        FunctionTokens.push_back(
+            processOperand(Operand, InstructionIndex, InstructionIndexMapping));
       }
+      ++InstructionIndex;
     }
   }
   return FunctionTokens;
