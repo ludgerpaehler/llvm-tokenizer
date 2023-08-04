@@ -3,10 +3,11 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/ScopedPrinter.h>
 #include <llvm/Support/SourceMgr.h>
 
-#include <iostream>
 #include <unordered_map>
 #include <vector>
 
@@ -30,6 +31,32 @@ enum TokenType {
   UnknownOperandToken,
   OpcodeToken
 };
+
+StringRef GetTokenTypeName(TokenType TypeInput) {
+  switch (TypeInput) {
+  case TokenType::PaddingToken:
+    return "padding";
+  case TokenType::InstructionOperandToken:
+    return "instruction_operand";
+  case TokenType::ConstantOperandToken:
+    return "constant_operand";
+  case TokenType::BasicBlockOperandToken:
+    return "basic_block_operand";
+  case TokenType::GlobalValueOperandToken:
+    return "global_value_operand";
+  case TokenType::MetadataAsValueOperandToken:
+    return "metadata_as_value_operand";
+  case TokenType::InlineASMOperandToken:
+    return "inline_ASM_operand";
+  case TokenType::ArgumentOperandToken:
+    return "argument_operand";
+  case TokenType::UnknownOperandToken:
+    return "unknown_operand";
+  case TokenType::OpcodeToken:
+    return "opcode";
+  }
+  return "unknown_token";
+}
 
 union TokenData {
   unsigned Opcode;
@@ -125,13 +152,21 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  std::unique_ptr<ScopedPrinter> Writer =
+      std::make_unique<ScopedPrinter>(fouts());
+
   for (Function &IRFunction : *IRModule) {
-    std::cout << "*** Starting new function: " << IRFunction.getName().data()
-              << " ***\n";
+    Writer->objectBegin("function");
+    Writer->printString("name", IRFunction.getName());
+    Writer->arrayBegin("tokens");
     std::vector<Token> FunctionTokens = processFunction(IRFunction);
     for (Token SingleToken : FunctionTokens) {
-      std::cout << static_cast<unsigned>(SingleToken.Type) << "\n";
+      Writer->objectBegin();
+      Writer->printString("type", GetTokenTypeName(SingleToken.Type));
+      Writer->objectEnd();
     }
+    Writer->arrayEnd();
+    Writer->objectEnd();
   }
 
   return 0;
