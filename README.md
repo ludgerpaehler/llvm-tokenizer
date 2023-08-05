@@ -56,3 +56,17 @@ cmake --build .
 
 4. That's it! The `llvm-tokenizer` binary will be in the `build/` folder.
 
+### Running the llvm-tokenizer tests
+
+The docker container contains all the necessary dependencies to run the tests
+for `llvm-tokenizer`. If you're doing a build outside of the container image,
+you'll need to make sure you have the `lit` python package and `FileCheck`
+(usually through a `llvm-dev` package) installed. After building the the
+package, you can simply run the following command in the build folder:
+
+```bash
+cmake --build . --target check-llvm-tokenizer
+```
+
+That will run all the tests present in the `./test` folder.
+
