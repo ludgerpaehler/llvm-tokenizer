@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20.0)
-project(SimpleProject)
+project(llvm-tokenizer)
 
 find_package(LLVM REQUIRED CONFIG)
 
@@ -17,4 +17,6 @@ add_executable(llvm-tokenizer llvm-tokenizer.cpp)
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 target_link_libraries(llvm-tokenizer ${llvm_libs})
+
+add_subdirectory(test)
 
