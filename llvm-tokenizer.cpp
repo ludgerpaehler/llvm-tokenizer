@@ -127,7 +127,7 @@ Token processOperand(
   } else if (isa<InlineAsm>(Operand)) {
     return Token(TokenType::InlineASMOperandToken, InstructionIndex);
   } else if (isa<Argument>(Operand)) {
-    return Token(TokenType::UnknownOperandToken, InstructionIndex);
+    return Token(TokenType::ArgumentOperandToken, InstructionIndex);
   } else {
     return Token(TokenType::UnknownOperandToken, InstructionIndex);
   }

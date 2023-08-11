@@ -14,11 +14,11 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK:       opcode: 13
 ; CHECK:     }
 ; CHECK:     {
-; CHECK:       type: unknown_operand
+; CHECK:       type: argument_operand
 ; CHECK:       instruction_index: 0
 ; CHECK:     }
 ; CHECK:     {
-; CHECK:       type: unknown_operand
+; CHECK:       type: argument_operand
 ; CHECK:       instruction_index: 0
 ; CHECK:     }
 ; CHECK:     {
