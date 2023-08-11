@@ -197,8 +197,9 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<ScopedPrinter> Writer = WriterFactory();
 
+  Writer->arrayBegin();
   for (Function &IRFunction : *IRModule) {
-    Writer->objectBegin("function");
+    Writer->objectBegin();
     Writer->printString("name", IRFunction.getName());
     Writer->arrayBegin("tokens");
     std::vector<Token> FunctionTokens = processFunction(IRFunction);
@@ -223,6 +224,7 @@ int main(int argc, char **argv) {
     Writer->arrayEnd();
     Writer->objectEnd();
   }
+  Writer->arrayEnd();
 
   return 0;
 }
