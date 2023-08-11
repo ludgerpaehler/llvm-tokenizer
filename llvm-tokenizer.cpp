@@ -9,14 +9,29 @@
 #include <llvm/Support/ScopedPrinter.h>
 #include <llvm/Support/SourceMgr.h>
 
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
 using namespace llvm;
 
+enum TokenizerOutputModeE { JSON, Standard };
+
 static cl::opt<std::string> InputFilename(cl::Positional,
                                           cl::desc("Input Bitcode/Textual IR"),
                                           cl::init("-"));
+
+static cl::opt<TokenizerOutputModeE> TokenizerOutputMode(
+    "output-mode", cl::desc("The type of output to produce."),
+    cl::values(clEnumValN(TokenizerOutputModeE::Standard, "standard",
+                          "The standard output mode."),
+               clEnumValN(TokenizerOutputModeE::JSON, "json", "JSON output.")),
+    cl::init(TokenizerOutputModeE::Standard));
+
+static cl::opt<bool>
+    PrettyPrintJSON("pretty-print",
+                    cl::desc("Whether or not to pretty print JSON output."),
+                    cl::init(false));
 
 static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 
@@ -157,6 +172,12 @@ std::vector<Token> processFunction(Function &IRFunction) {
   return FunctionTokens;
 }
 
+std::unique_ptr<ScopedPrinter> WriterFactory() {
+  if (TokenizerOutputMode == TokenizerOutputModeE::JSON)
+    return std::make_unique<JSONScopedPrinter>(fouts(), PrettyPrintJSON);
+  return std::make_unique<ScopedPrinter>(fouts());
+}
+
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm-tokenizer\n");
 
@@ -174,8 +195,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  std::unique_ptr<ScopedPrinter> Writer =
-      std::make_unique<ScopedPrinter>(fouts());
+  std::unique_ptr<ScopedPrinter> Writer = WriterFactory();
 
   for (Function &IRFunction : *IRModule) {
     Writer->objectBegin("function");
