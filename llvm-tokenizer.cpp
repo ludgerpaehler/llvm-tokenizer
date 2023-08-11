@@ -108,7 +108,7 @@ Token processOperand(
         Token(TokenType::InstructionOperandToken, InstructionIndex);
     auto InstructionIndexMappingItr =
         InstructionIndexMapping.find(static_cast<Value *>(I));
-    if (InstructionIndexMappingItr != InstructionIndexMapping.end()) {
+    if (InstructionIndexMappingItr == InstructionIndexMapping.end()) {
       // TODO(boomanaiden154): See how often this case occurs and find out a
       // better way to deal with it.
       InstructionOperandToken.Data.ReferencedInstructionIndex = 0;
