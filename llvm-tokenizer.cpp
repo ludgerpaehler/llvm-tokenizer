@@ -183,12 +183,9 @@ int main(int argc, char **argv) {
 
   LLVMContext Context;
 
-  std::unique_ptr<llvm::MemoryBuffer> FileBuffer =
-      ExitOnErr(errorOrToExpected(MemoryBuffer::getFile(InputFilename)));
-
   SMDiagnostic ParseError;
   std::unique_ptr<llvm::Module> IRModule =
-      parseIR(*FileBuffer, ParseError, Context);
+      parseIRFile(InputFilename, ParseError, Context);
 
   if (!IRModule) {
     ParseError.print("Failed to parse: ", errs());
