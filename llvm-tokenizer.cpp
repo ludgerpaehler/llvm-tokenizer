@@ -17,6 +17,8 @@ using namespace llvm;
 
 enum TokenizerOutputModeE { JSON, Standard };
 
+enum TokenizationModeE { Tokenize, Serialize };
+
 static cl::opt<std::string> InputFilename(cl::Positional,
                                           cl::desc("Input Bitcode/Textual IR"),
                                           cl::init("-"));
@@ -32,6 +34,15 @@ static cl::opt<bool>
     PrettyPrintJSON("pretty-print",
                     cl::desc("Whether or not to pretty print JSON output."),
                     cl::init(false));
+
+static cl::opt<TokenizationModeE> TokenizationMode(
+    "mode", cl::desc("The mode to run llvm-tokenizer in."),
+    cl::values(clEnumValN(TokenizationModeE::Tokenize, "tokenize",
+                          "Tokenize the input and output raw tokens"),
+               clEnumValN(TokenizationModeE::Serialize, "serialize",
+                          "Tokenize the input and output a stream of integers "
+                          "representing serialized tokens.")),
+    cl::init(TokenizationModeE::Tokenize));
 
 static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 
@@ -192,33 +203,125 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  std::unordered_map<std::string, std::vector<Token>> FunctionTokens;
+
+  for (Function &IRFunction : *IRModule) {
+    FunctionTokens[IRFunction.getName().str()] = processFunction(IRFunction);
+  }
+
   std::unique_ptr<ScopedPrinter> Writer = WriterFactory();
 
-  Writer->arrayBegin();
-  for (Function &IRFunction : *IRModule) {
-    Writer->objectBegin();
-    Writer->printString("name", IRFunction.getName());
-    Writer->arrayBegin("tokens");
-    std::vector<Token> FunctionTokens = processFunction(IRFunction);
-    for (Token SingleToken : FunctionTokens) {
+  if (TokenizationMode == TokenizationModeE::Tokenize) {
+    std::unique_ptr<ScopedPrinter> Writer = WriterFactory();
+    Writer->arrayBegin();
+    for (auto TokenizedFunctionItr : FunctionTokens) {
       Writer->objectBegin();
-      Writer->printString("type", GetTokenTypeName(SingleToken.Type));
-      Writer->printNumber("instruction_index", SingleToken.InstructionIndex);
-      if (SingleToken.Type == TokenType::OpcodeToken) {
-        Writer->printNumber("opcode", SingleToken.Data.Opcode);
-      } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
-        Writer->printNumber("instruction_reference",
-                            SingleToken.Data.ReferencedInstructionIndex);
-      } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
-        Writer->printNumber("integer_constant",
-                            SingleToken.Data.ConstantIntegerValue);
-      } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
-        Writer->printNumber("float_constant",
-                            (double)SingleToken.Data.ConstantFloatValue);
+      Writer->printString("name", TokenizedFunctionItr.first);
+      ;
+      Writer->arrayBegin("tokens");
+      for (Token SingleToken : TokenizedFunctionItr.second) {
+        Writer->objectBegin();
+        Writer->printString("type", GetTokenTypeName(SingleToken.Type));
+        Writer->printNumber("instruction_index", SingleToken.InstructionIndex);
+        if (SingleToken.Type == TokenType::OpcodeToken) {
+          Writer->printNumber("opcode", SingleToken.Data.Opcode);
+        } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
+          Writer->printNumber("instruction_reference",
+                              SingleToken.Data.ReferencedInstructionIndex);
+        } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
+          Writer->printNumber("integer_constant",
+                              SingleToken.Data.ConstantIntegerValue);
+        } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
+          Writer->printNumber("float_constant",
+                              (double)SingleToken.Data.ConstantFloatValue);
+        }
+        Writer->objectEnd();
       }
+      Writer->arrayEnd();
       Writer->objectEnd();
     }
     Writer->arrayEnd();
+    return 0;
+  }
+
+  // We're assuming we're in serialization mode.
+
+  Writer->arrayBegin();
+  for (auto TokenizedFunctionItr : FunctionTokens) {
+    Writer->objectBegin();
+    Writer->printString("name", TokenizedFunctionItr.first);
+
+    std::vector<uint32_t> SerializedTokens;
+    SerializedTokens.reserve(TokenizedFunctionItr.second.size());
+
+    // TODO(boomanaiden154): Make these constants configurable.
+
+    uint32_t ConstantIntegerOperandSize = 1002;
+    uint32_t InstructionOperandReferenceSize = 32;
+
+    // TODO(boomanaiden154): Figure out a more elegant way of constructing this.
+
+    uint32_t PaddingTokenIndex = 0;
+    uint32_t InstructionOperandIndex = 1;
+    uint32_t ConstantIntegerOperandIndex =
+        InstructionOperandIndex + InstructionOperandReferenceSize;
+    uint32_t ConstantFloatOperandIndex =
+        ConstantIntegerOperandIndex + ConstantIntegerOperandSize;
+    uint32_t UnknownConstantOperandTokenIndex = ConstantFloatOperandIndex + 1;
+    uint32_t BasicBlockOperandTokenIndex = UnknownConstantOperandTokenIndex + 1;
+    uint32_t GlobalValueOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
+    uint32_t MetadataAsValueOperandTokenIndex =
+        GlobalValueOperandTokenIndex + 1;
+    uint32_t InlineASMOperandTokenIndex = MetadataAsValueOperandTokenIndex + 1;
+    uint32_t ArgumentOperandTokenIndex = InlineASMOperandTokenIndex + 1;
+    uint32_t UnknownOperandTokenIndex = ArgumentOperandTokenIndex + 1;
+    uint32_t OpcodeTokenIndex = UnknownOperandTokenIndex + 1;
+
+    for (Token &SingleToken : TokenizedFunctionItr.second) {
+      if (SingleToken.Type == TokenType::PaddingToken) {
+        SerializedTokens.push_back(PaddingTokenIndex);
+      } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
+        // Get the distance from the current instruction to the instruction that
+        // is being referred to. This number will always be positive as we're in
+        // SSA.
+        uint32_t InstructionDistance =
+            SingleToken.InstructionIndex -
+            SingleToken.Data.ReferencedInstructionIndex;
+        if (InstructionDistance > InstructionOperandReferenceSize) {
+          InstructionDistance = InstructionOperandReferenceSize - 1;
+        }
+        SerializedTokens.push_back(InstructionOperandIndex +
+                                   InstructionDistance);
+      } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
+        // TODO(boomanaiden154): Make this actually read from a file rather than
+        // just looking at constants below 1000.
+        if (SingleToken.Data.ConstantIntegerValue < 1000)
+          SerializedTokens.push_back(ConstantIntegerOperandIndex +
+                                     SingleToken.Data.ConstantIntegerValue);
+        else
+          SerializedTokens.push_back(ConstantIntegerOperandSize - 1);
+      } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
+        SerializedTokens.push_back(ConstantFloatOperandIndex);
+      } else if (SingleToken.Type == TokenType::UnknownConstantOperandToken) {
+        SerializedTokens.push_back(UnknownConstantOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::BasicBlockOperandToken) {
+        SerializedTokens.push_back(BasicBlockOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::GlobalValueOperandToken) {
+        SerializedTokens.push_back(GlobalValueOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::MetadataAsValueOperandToken) {
+        SerializedTokens.push_back(MetadataAsValueOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::InlineASMOperandToken) {
+        SerializedTokens.push_back(InlineASMOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::ArgumentOperandToken) {
+        SerializedTokens.push_back(ArgumentOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::UnknownOperandToken) {
+        SerializedTokens.push_back(UnknownOperandTokenIndex);
+      } else if (SingleToken.Type == TokenType::OpcodeToken) {
+        SerializedTokens.push_back(OpcodeTokenIndex + SingleToken.Data.Opcode);
+      }
+    }
+
+    Writer->printList("tokens", SerializedTokens);
     Writer->objectEnd();
   }
   Writer->arrayEnd();
