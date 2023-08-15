@@ -54,7 +54,6 @@ enum TokenType {
   UnknownConstantOperandToken,
   BasicBlockOperandToken,
   GlobalValueOperandToken,
-  MetadataAsValueOperandToken,
   InlineASMOperandToken,
   ArgumentOperandToken,
   UnknownOperandToken,
@@ -77,8 +76,6 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
     return "basic_block_operand";
   case TokenType::GlobalValueOperandToken:
     return "global_value_operand";
-  case TokenType::MetadataAsValueOperandToken:
-    return "metadata_as_value_operand";
   case TokenType::InlineASMOperandToken:
     return "inline_ASM_operand";
   case TokenType::ArgumentOperandToken:
@@ -148,8 +145,6 @@ Token processOperand(
     return Token(TokenType::BasicBlockOperandToken, InstructionIndex);
   } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
     return Token(TokenType::GlobalValueOperandToken, InstructionIndex);
-  } else if (const MetadataAsValue *V = dyn_cast<MetadataAsValue>(Operand)) {
-    return Token(TokenType::MetadataAsValueOperandToken, InstructionIndex);
   } else if (isa<InlineAsm>(Operand)) {
     return Token(TokenType::InlineASMOperandToken, InstructionIndex);
   } else if (isa<Argument>(Operand)) {
@@ -270,9 +265,7 @@ int main(int argc, char **argv) {
     uint32_t UnknownConstantOperandTokenIndex = ConstantFloatOperandIndex + 1;
     uint32_t BasicBlockOperandTokenIndex = UnknownConstantOperandTokenIndex + 1;
     uint32_t GlobalValueOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
-    uint32_t MetadataAsValueOperandTokenIndex =
-        GlobalValueOperandTokenIndex + 1;
-    uint32_t InlineASMOperandTokenIndex = MetadataAsValueOperandTokenIndex + 1;
+    uint32_t InlineASMOperandTokenIndex = GlobalValueOperandTokenIndex + 1;
     uint32_t ArgumentOperandTokenIndex = InlineASMOperandTokenIndex + 1;
     uint32_t UnknownOperandTokenIndex = ArgumentOperandTokenIndex + 1;
     uint32_t OpcodeTokenIndex = UnknownOperandTokenIndex + 1;
@@ -308,8 +301,6 @@ int main(int argc, char **argv) {
         SerializedTokens.push_back(BasicBlockOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::GlobalValueOperandToken) {
         SerializedTokens.push_back(GlobalValueOperandTokenIndex);
-      } else if (SingleToken.Type == TokenType::MetadataAsValueOperandToken) {
-        SerializedTokens.push_back(MetadataAsValueOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::InlineASMOperandToken) {
         SerializedTokens.push_back(InlineASMOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::ArgumentOperandToken) {
