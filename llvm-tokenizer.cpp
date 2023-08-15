@@ -51,9 +51,9 @@ enum TokenType {
   InstructionOperandToken,
   ConstantIntegerOperandToken,
   ConstantFloatOperandToken,
+  ConstantGlobalValueOperandToken,
   UnknownConstantOperandToken,
   BasicBlockOperandToken,
-  GlobalValueOperandToken,
   InlineASMOperandToken,
   ArgumentOperandToken,
   UnknownOperandToken,
@@ -70,12 +70,12 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
     return "constant_integer_operand";
   case TokenType::ConstantFloatOperandToken:
     return "constant_float_operand";
+  case TokenType::ConstantGlobalValueOperandToken:
+    return "global_value_operand";
   case TokenType::UnknownConstantOperandToken:
     return "unknown_constant_operand";
   case TokenType::BasicBlockOperandToken:
     return "basic_block_operand";
-  case TokenType::GlobalValueOperandToken:
-    return "global_value_operand";
   case TokenType::InlineASMOperandToken:
     return "inline_ASM_operand";
   case TokenType::ArgumentOperandToken:
@@ -139,12 +139,12 @@ Token processOperand(
       ConstantOperandToken.Type = TokenType::ConstantFloatOperandToken;
       ConstantOperandToken.Data.ConstantFloatValue =
           ConstantFloat->getValue().convertToDouble();
+    } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
+      ConstantOperandToken.Type = TokenType::ConstantGlobalValueOperandToken;
     }
     return ConstantOperandToken;
   } else if (const BasicBlock *BB = dyn_cast<BasicBlock>(Operand)) {
     return Token(TokenType::BasicBlockOperandToken, InstructionIndex);
-  } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
-    return Token(TokenType::GlobalValueOperandToken, InstructionIndex);
   } else if (isa<InlineAsm>(Operand)) {
     return Token(TokenType::InlineASMOperandToken, InstructionIndex);
   } else if (isa<Argument>(Operand)) {
@@ -262,10 +262,11 @@ int main(int argc, char **argv) {
         InstructionOperandIndex + InstructionOperandReferenceSize;
     uint32_t ConstantFloatOperandIndex =
         ConstantIntegerOperandIndex + ConstantIntegerOperandSize;
+    uint32_t ConstantGlobalValueOperandTokenIndex =
+        ConstantFloatOperandIndex + 1;
     uint32_t UnknownConstantOperandTokenIndex = ConstantFloatOperandIndex + 1;
     uint32_t BasicBlockOperandTokenIndex = UnknownConstantOperandTokenIndex + 1;
-    uint32_t GlobalValueOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
-    uint32_t InlineASMOperandTokenIndex = GlobalValueOperandTokenIndex + 1;
+    uint32_t InlineASMOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
     uint32_t ArgumentOperandTokenIndex = InlineASMOperandTokenIndex + 1;
     uint32_t UnknownOperandTokenIndex = ArgumentOperandTokenIndex + 1;
     uint32_t OpcodeTokenIndex = UnknownOperandTokenIndex + 1;
@@ -295,12 +296,13 @@ int main(int argc, char **argv) {
           SerializedTokens.push_back(ConstantIntegerOperandSize - 1);
       } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
         SerializedTokens.push_back(ConstantFloatOperandIndex);
+      } else if (SingleToken.Type ==
+                 TokenType::ConstantGlobalValueOperandToken) {
+        SerializedTokens.push_back(ConstantGlobalValueOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::UnknownConstantOperandToken) {
         SerializedTokens.push_back(UnknownConstantOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::BasicBlockOperandToken) {
         SerializedTokens.push_back(BasicBlockOperandTokenIndex);
-      } else if (SingleToken.Type == TokenType::GlobalValueOperandToken) {
-        SerializedTokens.push_back(GlobalValueOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::InlineASMOperandToken) {
         SerializedTokens.push_back(InlineASMOperandTokenIndex);
       } else if (SingleToken.Type == TokenType::ArgumentOperandToken) {
