@@ -15,6 +15,9 @@
 
 using namespace llvm;
 
+static constexpr const uint32_t OpcodeCount = 67;
+static constexpr const uint32_t TypeCount = 22;
+
 enum TokenizerOutputModeE { JSON, Standard };
 
 enum TokenizationModeE { Tokenize, Serialize };
@@ -74,7 +77,8 @@ enum TokenType {
   InlineASMOperandToken,
   ArgumentOperandToken,
   UnknownOperandToken,
-  OpcodeToken
+  OpcodeToken,
+  TypeToken
 };
 
 StringRef GetTokenTypeName(TokenType TypeInput) {
@@ -101,6 +105,8 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
     return "unknown_operand";
   case TokenType::OpcodeToken:
     return "opcode";
+  case TokenType::TypeToken:
+    return "type";
   }
   return "unknown_token";
 }
@@ -110,6 +116,7 @@ union TokenData {
   size_t ReferencedInstructionIndex;
   uint64_t ConstantIntegerValue;
   double ConstantFloatValue;
+  uint8_t TypeID;
 };
 
 struct Token {
@@ -183,6 +190,10 @@ std::vector<Token> processFunction(Function &IRFunction) {
   for (BasicBlock &IRBB : IRFunction) {
     for (Instruction &IRInstruction : IRBB) {
       FunctionTokens.push_back(processOpcode(IRInstruction, InstructionIndex));
+      // Currently, only tokenize the type of the instruction.
+      Token TypeToken(TokenType::TypeToken, InstructionIndex);
+      TypeToken.Data.TypeID = IRInstruction.getType()->getTypeID();
+      FunctionTokens.push_back(TypeToken);
       InstructionIndexMapping[&IRInstruction] = InstructionIndex;
       for (unsigned i = 0; i < IRInstruction.getNumOperands(); ++i) {
         Value *Operand = IRInstruction.getOperand(i);
@@ -235,6 +246,7 @@ struct SerializationConfig {
   uint32_t ArgumentOperandIndex;
   uint32_t UnknownOperandIndex;
   uint32_t OpcodeIndex;
+  uint32_t TypeIndex;
 
   SerializationConfig(uint32_t InstructionOperandSize,
                       uint32_t ConstantIntegerOperandSize) {
@@ -251,6 +263,7 @@ struct SerializationConfig {
     ArgumentOperandIndex = InlineASMOperandIndex + 1;
     UnknownOperandIndex = ArgumentOperandIndex + 1;
     OpcodeIndex = UnknownOperandIndex + 1;
+    TypeIndex = OpcodeIndex + OpcodeCount + 1;
   }
 };
 
@@ -279,9 +292,11 @@ void printSerConfig(const SerializationConfig &SerConfig,
   Writer.printNumber("UnknownOperandIndex", SerConfig.UnknownOperandIndex);
   Writer.objectBegin("OpcodeRange");
   Writer.printNumber("Begin", SerConfig.OpcodeIndex);
-  // TODO(boomanaiden154): Use Instruction.def and the provided macros to get
-  // this number automatically.
-  Writer.printNumber("End", SerConfig.OpcodeIndex + 67);
+  Writer.printNumber("End", SerConfig.OpcodeIndex + OpcodeCount);
+  Writer.objectEnd();
+  Writer.objectBegin("TypeRange");
+  Writer.printNumber("Begin", SerConfig.TypeIndex);
+  Writer.printNumber("End", SerConfig.TypeIndex + TypeCount);
   Writer.objectEnd();
   Writer.objectEnd();
 }
@@ -307,6 +322,8 @@ void printTokenizedFunction(const std::string &FunctionName,
     } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
       Writer.printNumber("float_constant",
                          (double)SingleToken.Data.ConstantFloatValue);
+    } else if (SingleToken.Type == TokenType::TypeToken) {
+      Writer.printNumber("type_id", SingleToken.Data.TypeID);
     }
     Writer.objectEnd();
   }
@@ -363,6 +380,8 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
     } else if (SingleToken.Type == TokenType::OpcodeToken) {
       SerializedTokens.push_back(SerConfig.OpcodeIndex +
                                  SingleToken.Data.Opcode);
+    } else if (SingleToken.Type == TokenType::TypeToken) {
+      SerializedTokens.push_back(SerConfig.TypeIndex + SingleToken.Data.TypeID);
     }
   }
 

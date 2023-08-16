@@ -16,6 +16,11 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK:         opcode: 13
 ; CHECK:       }
 ; CHECK:       {
+; CHECK:         type: type
+; CHECK:         instruction_index: 0
+; CHECK:         type_id: 13
+; CHECK:       }
+; CHECK:       {
 ; CHECK:         type: argument_operand
 ; CHECK:         instruction_index: 0
 ; CHECK:       }
@@ -29,6 +34,11 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK:         opcode: 1
 ; CHECK:       }
 ; CHECK:       {
+; CHECK:         type: type
+; CHECK:         instruction_index: 1
+; CHECK:         type_id: 7
+; CHECK:       }
+; CHECK:       {
 ; CHECK:         type: instruction_operand
 ; CHECK:         instruction_index: 1
 ; CHECK:         instruction_reference: 0
@@ -37,33 +47,45 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK:   }
 ; CHECK: ]
 
-; CHECK-JSON: "functions": [
-; CHECK-JSON:   {
-; CHECK-JSON:     "name": "f2",
-; CHECK-JSON:     "tokens": [
-; CHECK-JSON:       {
-; CHECK-JSON:         "type": "opcode",
-; CHECK-JSON:         "instruction_index": 0,
-; CHECK-JSON:         "opcode": 13
-; CHECK-JSON:       },
-; CHECK-JSON:       {
-; CHECK-JSON:         "type": "argument_operand",
-; CHECK-JSON:         "instruction_index": 0
-; CHECK-JSON:       },
-; CHECK-JSON:       {
-; CHECK-JSON:         "type": "argument_operand",
-; CHECK-JSON:         "instruction_index": 0
-; CHECK-JSON:       },
-; CHECK-JSON:       {
-; CHECK-JSON:         "type": "opcode",
-; CHECK-JSON:         "instruction_index": 1,
-; CHECK-JSON:         "opcode": 1
-; CHECK-JSON:       },
-; CHECK-JSON:       {
-; CHECK-JSON:         "type": "instruction_operand",
-; CHECK-JSON:         "instruction_index": 1,
-; CHECK-JSON:         "instruction_reference": 0
-; CHECK-JSON:       }
-; CHECK-JSON:     ]
-; CHECK-JSON:   }
-; CHECK-JSON: ]
+; CHECK-JSON: {
+; CHECK-JSON:   "functions": [
+; CHECK-JSON:     {
+; CHECK-JSON:       "name": "f2",
+; CHECK-JSON:       "tokens": [
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "opcode",
+; CHECK-JSON:           "instruction_index": 0,
+; CHECK-JSON:           "opcode": 13
+; CHECK-JSON:         },
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "type",
+; CHECK-JSON:           "instruction_index": 0,
+; CHECK-JSON:           "type_id": 13
+; CHECK-JSON:         },
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "argument_operand",
+; CHECK-JSON:           "instruction_index": 0
+; CHECK-JSON:         },
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "argument_operand",
+; CHECK-JSON:           "instruction_index": 0
+; CHECK-JSON:         },
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "opcode",
+; CHECK-JSON:           "instruction_index": 1,
+; CHECK-JSON:           "opcode": 1
+; CHECK-JSON:         },
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "type",
+; CHECK-JSON:           "instruction_index": 1,
+; CHECK-JSON:           "type_id": 7
+; CHECK-JSON:         },
+; CHECK-JSON:         {
+; CHECK-JSON:           "type": "instruction_operand",
+; CHECK-JSON:           "instruction_index": 1,
+; CHECK-JSON:           "instruction_reference": 0
+; CHECK-JSON:         }
+; CHECK-JSON:       ]
+; CHECK-JSON:     }
+; CHECK-JSON:   ]
+; CHECK-JSON: }
