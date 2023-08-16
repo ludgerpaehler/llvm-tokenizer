@@ -223,6 +223,68 @@ LoadIntegerConstantsFromFile(StringRef FileName) {
   return IntegerConstants;
 }
 
+struct SerializationConfig {
+  uint32_t PaddingTokenIndex;
+  uint32_t InstructionOperandIndex;
+  uint32_t ConstantIntegerOperandIndex;
+  uint32_t ConstantFloatOperandIndex;
+  uint32_t ConstantGlobalValueOperandIndex;
+  uint32_t UnknownConstantOperandIndex;
+  uint32_t BasicBlockOperandIndex;
+  uint32_t InlineASMOperandIndex;
+  uint32_t ArgumentOperandIndex;
+  uint32_t UnknownOperandIndex;
+  uint32_t OpcodeIndex;
+
+  SerializationConfig(uint32_t InstructionOperandSize,
+                      uint32_t ConstantIntegerOperandSize) {
+    PaddingTokenIndex = 0;
+    InstructionOperandIndex = PaddingTokenIndex + 1;
+    ConstantIntegerOperandIndex =
+        InstructionOperandIndex + InstructionOperandSize;
+    ConstantFloatOperandIndex =
+        ConstantIntegerOperandIndex + ConstantIntegerOperandSize;
+    ConstantGlobalValueOperandIndex = ConstantFloatOperandIndex + 1;
+    UnknownConstantOperandIndex = ConstantGlobalValueOperandIndex + 1;
+    BasicBlockOperandIndex = UnknownConstantOperandIndex + 1;
+    InlineASMOperandIndex = BasicBlockOperandIndex + 1;
+    ArgumentOperandIndex = InlineASMOperandIndex + 1;
+    UnknownOperandIndex = ArgumentOperandIndex + 1;
+    OpcodeIndex = UnknownOperandIndex + 1;
+  }
+};
+
+void printSerConfig(SerializationConfig &SerConfig, ScopedPrinter &Writer) {
+  Writer.objectBegin("config");
+  Writer.printNumber("PaddingTokenIndex", SerConfig.PaddingTokenIndex);
+  Writer.objectBegin("InstructionOperandRange");
+  Writer.printNumber("Begin", SerConfig.InstructionOperandIndex);
+  Writer.printNumber("End", SerConfig.ConstantIntegerOperandIndex - 1);
+  Writer.objectEnd();
+  Writer.objectBegin("ConstantOperandRange");
+  Writer.printNumber("Begin", SerConfig.ConstantIntegerOperandIndex);
+  Writer.printNumber("End", SerConfig.ConstantFloatOperandIndex - 1);
+  Writer.objectEnd();
+  Writer.printNumber("ConstantFloatOperandIndex",
+                     SerConfig.ConstantFloatOperandIndex);
+  Writer.printNumber("ConstantGlobalValueIndex",
+                     SerConfig.ConstantGlobalValueOperandIndex);
+  Writer.printNumber("UnknownConstantOperandIndex",
+                     SerConfig.UnknownConstantOperandIndex);
+  Writer.printNumber("BasicBlockOperandIndex",
+                     SerConfig.BasicBlockOperandIndex);
+  Writer.printNumber("InlineASMOperandIndex", SerConfig.InlineASMOperandIndex);
+  Writer.printNumber("ArgumentOperandIndex", SerConfig.ArgumentOperandIndex);
+  Writer.printNumber("UnknownOperandIndex", SerConfig.UnknownOperandIndex);
+  Writer.objectBegin("OpcodeRange");
+  Writer.printNumber("Begin", SerConfig.OpcodeIndex);
+  // TODO(boomanaiden154): Use Instruction.def and the provided macros to get
+  // this number automatically.
+  Writer.printNumber("End", SerConfig.OpcodeIndex + 67);
+  Writer.objectEnd();
+  Writer.objectEnd();
+}
+
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm-tokenizer\n");
 
@@ -282,49 +344,13 @@ int main(int argc, char **argv) {
   std::unordered_map<int64_t, uint32_t> IntegerConstantsToTokenize =
       LoadIntegerConstantsFromFile(IntConstantsListFilename);
 
-  uint32_t ConstantIntegerOperandSize = IntegerConstantsToTokenize.size();
-
-  // TODO(boomanaiden154): Figure out a more elegant way of constructing this.
-
-  uint32_t PaddingTokenIndex = 0;
-  uint32_t InstructionOperandIndex = 1;
-  uint32_t ConstantIntegerOperandIndex =
-      InstructionOperandIndex + MaxInstructionOperandReferenceDiff + 1;
-  uint32_t ConstantFloatOperandIndex =
-      ConstantIntegerOperandIndex + ConstantIntegerOperandSize + 1;
-  uint32_t ConstantGlobalValueOperandTokenIndex = ConstantFloatOperandIndex + 1;
-  uint32_t UnknownConstantOperandTokenIndex =
-      ConstantGlobalValueOperandTokenIndex + 1;
-  uint32_t BasicBlockOperandTokenIndex = UnknownConstantOperandTokenIndex + 1;
-  uint32_t InlineASMOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
-  uint32_t ArgumentOperandTokenIndex = InlineASMOperandTokenIndex + 1;
-  uint32_t UnknownOperandTokenIndex = ArgumentOperandTokenIndex + 1;
-  uint32_t OpcodeTokenIndex = UnknownOperandTokenIndex + 1;
+  // Add one to each of the sizes as we also need to include the "out of range"
+  // tokens that are the last index in the range.
+  SerializationConfig SerConfig(MaxInstructionOperandReferenceDiff + 1,
+                                IntegerConstantsToTokenize.size() + 1);
 
   if (PrintSerializationConfig) {
-    Writer->objectBegin("config");
-    Writer->printNumber("PaddingTokenIndex", PaddingTokenIndex);
-    Writer->objectBegin("InstructionOperandRange");
-    Writer->printNumber("Begin", InstructionOperandIndex);
-    Writer->printNumber("End", ConstantIntegerOperandIndex - 1);
-    Writer->objectEnd();
-    Writer->objectBegin("ConstantOperandRange");
-    Writer->printNumber("Begin", ConstantIntegerOperandIndex);
-    Writer->printNumber("End", ConstantFloatOperandIndex - 1);
-    Writer->objectEnd();
-    Writer->printNumber("ConstantFloatOperandIndex", ConstantFloatOperandIndex);
-    Writer->printNumber("ConstantGlobalValueIndex",
-                        ConstantGlobalValueOperandTokenIndex);
-    Writer->printNumber("UnknownConstantOperandIndex",
-                        UnknownConstantOperandTokenIndex);
-    Writer->printNumber("BasicBlockOperandIndex", BasicBlockOperandTokenIndex);
-    Writer->printNumber("InlineASMOperandIndex", InlineASMOperandTokenIndex);
-    Writer->printNumber("ArgumentOperandIndex", ArgumentOperandTokenIndex);
-    Writer->printNumber("UnknownOperandIndex", UnknownOperandTokenIndex);
-    Writer->objectBegin("OpcodeRange");
-    Writer->printNumber("Begin", OpcodeTokenIndex);
-    Writer->objectEnd();
-    Writer->objectEnd();
+    printSerConfig(SerConfig, *Writer);
   }
 
   Writer->arrayBegin("functions");
@@ -337,7 +363,7 @@ int main(int argc, char **argv) {
 
     for (Token &SingleToken : TokenizedFunctionItr.second) {
       if (SingleToken.Type == TokenType::PaddingToken) {
-        SerializedTokens.push_back(PaddingTokenIndex);
+        SerializedTokens.push_back(SerConfig.PaddingTokenIndex);
       } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
         // Get the distance from the current instruction to the instruction
         // thati is being referred to. This number will always be positive as
@@ -348,36 +374,37 @@ int main(int argc, char **argv) {
         if (InstructionDistance > MaxInstructionOperandReferenceDiff) {
           InstructionDistance = MaxInstructionOperandReferenceDiff;
         }
-        SerializedTokens.push_back(InstructionOperandIndex +
+        SerializedTokens.push_back(SerConfig.InstructionOperandIndex +
                                    InstructionDistance);
       } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
         if (IntegerConstantsToTokenize.count(
                 SingleToken.Data.ConstantIntegerValue) != 0) {
           SerializedTokens.push_back(
-              ConstantIntegerOperandIndex +
+              SerConfig.ConstantIntegerOperandIndex +
               IntegerConstantsToTokenize[SingleToken.Data
                                              .ConstantIntegerValue]);
         } else {
-          SerializedTokens.push_back(ConstantIntegerOperandIndex +
+          SerializedTokens.push_back(SerConfig.ConstantIntegerOperandIndex +
                                      IntegerConstantsToTokenize.size());
         }
       } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
-        SerializedTokens.push_back(ConstantFloatOperandIndex);
+        SerializedTokens.push_back(SerConfig.ConstantFloatOperandIndex);
       } else if (SingleToken.Type ==
                  TokenType::ConstantGlobalValueOperandToken) {
-        SerializedTokens.push_back(ConstantGlobalValueOperandTokenIndex);
+        SerializedTokens.push_back(SerConfig.ConstantGlobalValueOperandIndex);
       } else if (SingleToken.Type == TokenType::UnknownConstantOperandToken) {
-        SerializedTokens.push_back(UnknownConstantOperandTokenIndex);
+        SerializedTokens.push_back(SerConfig.UnknownConstantOperandIndex);
       } else if (SingleToken.Type == TokenType::BasicBlockOperandToken) {
-        SerializedTokens.push_back(BasicBlockOperandTokenIndex);
+        SerializedTokens.push_back(SerConfig.BasicBlockOperandIndex);
       } else if (SingleToken.Type == TokenType::InlineASMOperandToken) {
-        SerializedTokens.push_back(InlineASMOperandTokenIndex);
+        SerializedTokens.push_back(SerConfig.InlineASMOperandIndex);
       } else if (SingleToken.Type == TokenType::ArgumentOperandToken) {
-        SerializedTokens.push_back(ArgumentOperandTokenIndex);
+        SerializedTokens.push_back(SerConfig.ArgumentOperandIndex);
       } else if (SingleToken.Type == TokenType::UnknownOperandToken) {
-        SerializedTokens.push_back(UnknownOperandTokenIndex);
+        SerializedTokens.push_back(SerConfig.UnknownOperandIndex);
       } else if (SingleToken.Type == TokenType::OpcodeToken) {
-        SerializedTokens.push_back(OpcodeTokenIndex + SingleToken.Data.Opcode);
+        SerializedTokens.push_back(SerConfig.OpcodeIndex +
+                                   SingleToken.Data.Opcode);
       }
     }
 
