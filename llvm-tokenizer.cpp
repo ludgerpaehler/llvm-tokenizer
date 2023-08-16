@@ -254,7 +254,8 @@ struct SerializationConfig {
   }
 };
 
-void printSerConfig(SerializationConfig &SerConfig, ScopedPrinter &Writer) {
+void printSerConfig(const SerializationConfig &SerConfig,
+                    ScopedPrinter &Writer) {
   Writer.objectBegin("config");
   Writer.printNumber("PaddingTokenIndex", SerConfig.PaddingTokenIndex);
   Writer.objectBegin("InstructionOperandRange");
@@ -285,6 +286,89 @@ void printSerConfig(SerializationConfig &SerConfig, ScopedPrinter &Writer) {
   Writer.objectEnd();
 }
 
+void printTokenizedFunction(const std::string &FunctionName,
+                            const std::vector<Token> &FunctionTokens,
+                            ScopedPrinter &Writer) {
+  Writer.objectBegin();
+  Writer.printString("name", FunctionName);
+  Writer.arrayBegin("tokens");
+  for (Token SingleToken : FunctionTokens) {
+    Writer.objectBegin();
+    Writer.printString("type", GetTokenTypeName(SingleToken.Type));
+    Writer.printNumber("instruction_index", SingleToken.InstructionIndex);
+    if (SingleToken.Type == TokenType::OpcodeToken) {
+      Writer.printNumber("opcode", SingleToken.Data.Opcode);
+    } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
+      Writer.printNumber("instruction_reference",
+                         SingleToken.Data.ReferencedInstructionIndex);
+    } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
+      Writer.printNumber("integer_constant",
+                         SingleToken.Data.ConstantIntegerValue);
+    } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
+      Writer.printNumber("float_constant",
+                         (double)SingleToken.Data.ConstantFloatValue);
+    }
+    Writer.objectEnd();
+  }
+  Writer.arrayEnd();
+  Writer.objectEnd();
+}
+
+std::vector<uint32_t> SerializeFunctionFromTokens(
+    const std::vector<Token> &FunctionTokens,
+    const std::unordered_map<int64_t, uint32_t> IntegerConstantsToTokenize,
+    const SerializationConfig &SerConfig) {
+  std::vector<uint32_t> SerializedTokens;
+  SerializedTokens.reserve(FunctionTokens.size());
+
+  for (const Token &SingleToken : FunctionTokens) {
+    if (SingleToken.Type == TokenType::PaddingToken) {
+      SerializedTokens.push_back(SerConfig.PaddingTokenIndex);
+    } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
+      // Get the distance from the current instruction to the instruction
+      // thati is being referred to. This number will always be positive as
+      // we're in SSA.
+      uint32_t InstructionDistance =
+          SingleToken.InstructionIndex -
+          SingleToken.Data.ReferencedInstructionIndex;
+      if (InstructionDistance > MaxInstructionOperandReferenceDiff) {
+        InstructionDistance = MaxInstructionOperandReferenceDiff;
+      }
+      SerializedTokens.push_back(SerConfig.InstructionOperandIndex +
+                                 InstructionDistance);
+    } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
+      if (IntegerConstantsToTokenize.count(
+              SingleToken.Data.ConstantIntegerValue) != 0) {
+        SerializedTokens.push_back(SerConfig.ConstantIntegerOperandIndex +
+                                   IntegerConstantsToTokenize.at(
+                                       SingleToken.Data.ConstantIntegerValue));
+      } else {
+        SerializedTokens.push_back(SerConfig.ConstantIntegerOperandIndex +
+                                   IntegerConstantsToTokenize.size());
+      }
+    } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
+      SerializedTokens.push_back(SerConfig.ConstantFloatOperandIndex);
+    } else if (SingleToken.Type == TokenType::ConstantGlobalValueOperandToken) {
+      SerializedTokens.push_back(SerConfig.ConstantGlobalValueOperandIndex);
+    } else if (SingleToken.Type == TokenType::UnknownConstantOperandToken) {
+      SerializedTokens.push_back(SerConfig.UnknownConstantOperandIndex);
+    } else if (SingleToken.Type == TokenType::BasicBlockOperandToken) {
+      SerializedTokens.push_back(SerConfig.BasicBlockOperandIndex);
+    } else if (SingleToken.Type == TokenType::InlineASMOperandToken) {
+      SerializedTokens.push_back(SerConfig.InlineASMOperandIndex);
+    } else if (SingleToken.Type == TokenType::ArgumentOperandToken) {
+      SerializedTokens.push_back(SerConfig.ArgumentOperandIndex);
+    } else if (SingleToken.Type == TokenType::UnknownOperandToken) {
+      SerializedTokens.push_back(SerConfig.UnknownOperandIndex);
+    } else if (SingleToken.Type == TokenType::OpcodeToken) {
+      SerializedTokens.push_back(SerConfig.OpcodeIndex +
+                                 SingleToken.Data.Opcode);
+    }
+  }
+
+  return SerializedTokens;
+}
+
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm-tokenizer\n");
 
@@ -311,30 +395,8 @@ int main(int argc, char **argv) {
     std::unique_ptr<ScopedPrinter> Writer = WriterFactory();
     Writer->arrayBegin("functions");
     for (auto TokenizedFunctionItr : FunctionTokens) {
-      Writer->objectBegin();
-      Writer->printString("name", TokenizedFunctionItr.first);
-      ;
-      Writer->arrayBegin("tokens");
-      for (Token SingleToken : TokenizedFunctionItr.second) {
-        Writer->objectBegin();
-        Writer->printString("type", GetTokenTypeName(SingleToken.Type));
-        Writer->printNumber("instruction_index", SingleToken.InstructionIndex);
-        if (SingleToken.Type == TokenType::OpcodeToken) {
-          Writer->printNumber("opcode", SingleToken.Data.Opcode);
-        } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
-          Writer->printNumber("instruction_reference",
-                              SingleToken.Data.ReferencedInstructionIndex);
-        } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
-          Writer->printNumber("integer_constant",
-                              SingleToken.Data.ConstantIntegerValue);
-        } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
-          Writer->printNumber("float_constant",
-                              (double)SingleToken.Data.ConstantFloatValue);
-        }
-        Writer->objectEnd();
-      }
-      Writer->arrayEnd();
-      Writer->objectEnd();
+      printTokenizedFunction(TokenizedFunctionItr.first,
+                             TokenizedFunctionItr.second, *Writer);
     }
     Writer->arrayEnd();
     return 0;
@@ -357,58 +419,9 @@ int main(int argc, char **argv) {
   for (auto TokenizedFunctionItr : FunctionTokens) {
     Writer->objectBegin();
     Writer->printString("name", TokenizedFunctionItr.first);
-
-    std::vector<uint32_t> SerializedTokens;
-    SerializedTokens.reserve(TokenizedFunctionItr.second.size());
-
-    for (Token &SingleToken : TokenizedFunctionItr.second) {
-      if (SingleToken.Type == TokenType::PaddingToken) {
-        SerializedTokens.push_back(SerConfig.PaddingTokenIndex);
-      } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
-        // Get the distance from the current instruction to the instruction
-        // thati is being referred to. This number will always be positive as
-        // we're in SSA.
-        uint32_t InstructionDistance =
-            SingleToken.InstructionIndex -
-            SingleToken.Data.ReferencedInstructionIndex;
-        if (InstructionDistance > MaxInstructionOperandReferenceDiff) {
-          InstructionDistance = MaxInstructionOperandReferenceDiff;
-        }
-        SerializedTokens.push_back(SerConfig.InstructionOperandIndex +
-                                   InstructionDistance);
-      } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
-        if (IntegerConstantsToTokenize.count(
-                SingleToken.Data.ConstantIntegerValue) != 0) {
-          SerializedTokens.push_back(
-              SerConfig.ConstantIntegerOperandIndex +
-              IntegerConstantsToTokenize[SingleToken.Data
-                                             .ConstantIntegerValue]);
-        } else {
-          SerializedTokens.push_back(SerConfig.ConstantIntegerOperandIndex +
-                                     IntegerConstantsToTokenize.size());
-        }
-      } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
-        SerializedTokens.push_back(SerConfig.ConstantFloatOperandIndex);
-      } else if (SingleToken.Type ==
-                 TokenType::ConstantGlobalValueOperandToken) {
-        SerializedTokens.push_back(SerConfig.ConstantGlobalValueOperandIndex);
-      } else if (SingleToken.Type == TokenType::UnknownConstantOperandToken) {
-        SerializedTokens.push_back(SerConfig.UnknownConstantOperandIndex);
-      } else if (SingleToken.Type == TokenType::BasicBlockOperandToken) {
-        SerializedTokens.push_back(SerConfig.BasicBlockOperandIndex);
-      } else if (SingleToken.Type == TokenType::InlineASMOperandToken) {
-        SerializedTokens.push_back(SerConfig.InlineASMOperandIndex);
-      } else if (SingleToken.Type == TokenType::ArgumentOperandToken) {
-        SerializedTokens.push_back(SerConfig.ArgumentOperandIndex);
-      } else if (SingleToken.Type == TokenType::UnknownOperandToken) {
-        SerializedTokens.push_back(SerConfig.UnknownOperandIndex);
-      } else if (SingleToken.Type == TokenType::OpcodeToken) {
-        SerializedTokens.push_back(SerConfig.OpcodeIndex +
-                                   SingleToken.Data.Opcode);
-      }
-    }
-
-    Writer->printList("tokens", SerializedTokens);
+    Writer->printList("tokens", SerializeFunctionFromTokens(
+                                    TokenizedFunctionItr.second,
+                                    IntegerConstantsToTokenize, SerConfig));
     Writer->objectEnd();
   }
   Writer->arrayEnd();
