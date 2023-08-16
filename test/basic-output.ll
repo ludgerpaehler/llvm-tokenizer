@@ -6,7 +6,7 @@ define i64 @f2(i64 %a, i64 %b) {
 	ret i64 %sum
 }
 
-; CHECK: [
+; CHECK: functions [
 ; CHECK:   {
 ; CHECK:     name: f2
 ; CHECK:     tokens [
@@ -37,7 +37,7 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK:   }
 ; CHECK: ]
 
-; CHECK-JSON: [
+; CHECK-JSON: "functions": [
 ; CHECK-JSON:   {
 ; CHECK-JSON:     "name": "f2",
 ; CHECK-JSON:     "tokens": [

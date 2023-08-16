@@ -49,9 +49,17 @@ static cl::opt<std::string> IntConstantsListFilename(
     cl::desc("A list of integer constants that should be tokenized."),
     cl::init(""));
 
-static cl::opt<uint32_t> MaxInstructionOperandReferenceDiff("max-instruction-operand-reference-diff",
-														 cl::desc("The maximum numerical difference in instruction indexes to tokenize uniquely."),
-																														cl::init(32));
+static cl::opt<uint32_t> MaxInstructionOperandReferenceDiff(
+    "max-instruction-operand-reference-diff",
+    cl::desc("The maximum numerical difference in instruction indexes to "
+             "tokenize uniquely."),
+    cl::init(32));
+
+static cl::opt<bool> PrintSerializationConfig(
+    "print-serialization-config",
+    cl::desc(
+        "Whether or not to print information on how the input was tokenized."),
+    cl::init(false));
 
 static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 
@@ -239,7 +247,7 @@ int main(int argc, char **argv) {
 
   if (TokenizationMode == TokenizationModeE::Tokenize) {
     std::unique_ptr<ScopedPrinter> Writer = WriterFactory();
-    Writer->arrayBegin();
+    Writer->arrayBegin("functions");
     for (auto TokenizedFunctionItr : FunctionTokens) {
       Writer->objectBegin();
       Writer->printString("name", TokenizedFunctionItr.first);
@@ -274,34 +282,58 @@ int main(int argc, char **argv) {
   std::unordered_map<int64_t, uint32_t> IntegerConstantsToTokenize =
       LoadIntegerConstantsFromFile(IntConstantsListFilename);
 
-  Writer->arrayBegin();
+  uint32_t ConstantIntegerOperandSize = IntegerConstantsToTokenize.size();
+
+  // TODO(boomanaiden154): Figure out a more elegant way of constructing this.
+
+  uint32_t PaddingTokenIndex = 0;
+  uint32_t InstructionOperandIndex = 1;
+  uint32_t ConstantIntegerOperandIndex =
+      InstructionOperandIndex + MaxInstructionOperandReferenceDiff + 1;
+  uint32_t ConstantFloatOperandIndex =
+      ConstantIntegerOperandIndex + ConstantIntegerOperandSize + 1;
+  uint32_t ConstantGlobalValueOperandTokenIndex = ConstantFloatOperandIndex + 1;
+  uint32_t UnknownConstantOperandTokenIndex =
+      ConstantGlobalValueOperandTokenIndex + 1;
+  uint32_t BasicBlockOperandTokenIndex = UnknownConstantOperandTokenIndex + 1;
+  uint32_t InlineASMOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
+  uint32_t ArgumentOperandTokenIndex = InlineASMOperandTokenIndex + 1;
+  uint32_t UnknownOperandTokenIndex = ArgumentOperandTokenIndex + 1;
+  uint32_t OpcodeTokenIndex = UnknownOperandTokenIndex + 1;
+
+  if (PrintSerializationConfig) {
+    Writer->objectBegin("config");
+    Writer->printNumber("PaddingTokenIndex", PaddingTokenIndex);
+    Writer->objectBegin("InstructionOperandRange");
+    Writer->printNumber("Begin", InstructionOperandIndex);
+    Writer->printNumber("End", ConstantIntegerOperandIndex - 1);
+    Writer->objectEnd();
+    Writer->objectBegin("ConstantOperandRange");
+    Writer->printNumber("Begin", ConstantIntegerOperandIndex);
+    Writer->printNumber("End", ConstantFloatOperandIndex - 1);
+    Writer->objectEnd();
+    Writer->printNumber("ConstantFloatOperandIndex", ConstantFloatOperandIndex);
+    Writer->printNumber("ConstantGlobalValueIndex",
+                        ConstantGlobalValueOperandTokenIndex);
+    Writer->printNumber("UnknownConstantOperandIndex",
+                        UnknownConstantOperandTokenIndex);
+    Writer->printNumber("BasicBlockOperandIndex", BasicBlockOperandTokenIndex);
+    Writer->printNumber("InlineASMOperandIndex", InlineASMOperandTokenIndex);
+    Writer->printNumber("ArgumentOperandIndex", ArgumentOperandTokenIndex);
+    Writer->printNumber("UnknownOperandIndex", UnknownOperandTokenIndex);
+    Writer->objectBegin("OpcodeRange");
+    Writer->printNumber("Begin", OpcodeTokenIndex);
+    Writer->objectEnd();
+    Writer->objectEnd();
+  }
+
+  Writer->arrayBegin("functions");
   for (auto TokenizedFunctionItr : FunctionTokens) {
     Writer->objectBegin();
     Writer->printString("name", TokenizedFunctionItr.first);
 
     std::vector<uint32_t> SerializedTokens;
     SerializedTokens.reserve(TokenizedFunctionItr.second.size());
-
-    // TODO(boomanaiden154): Make these constants configurable.
-
-    uint32_t ConstantIntegerOperandSize = IntegerConstantsToTokenize.size();
-
-    // TODO(boomanaiden154): Figure out a more elegant way of constructing this.
-
-    uint32_t PaddingTokenIndex = 0;
-    uint32_t InstructionOperandIndex = 1;
-    uint32_t ConstantIntegerOperandIndex =
-        InstructionOperandIndex + MaxInstructionOperandReferenceDiff + 1;
-    uint32_t ConstantFloatOperandIndex =
-        ConstantIntegerOperandIndex + ConstantIntegerOperandSize + 1;
-    uint32_t ConstantGlobalValueOperandTokenIndex =
-        ConstantFloatOperandIndex + 1;
-    uint32_t UnknownConstantOperandTokenIndex = ConstantFloatOperandIndex + 1;
-    uint32_t BasicBlockOperandTokenIndex = UnknownConstantOperandTokenIndex + 1;
-    uint32_t InlineASMOperandTokenIndex = BasicBlockOperandTokenIndex + 1;
-    uint32_t ArgumentOperandTokenIndex = InlineASMOperandTokenIndex + 1;
-    uint32_t UnknownOperandTokenIndex = ArgumentOperandTokenIndex + 1;
-    uint32_t OpcodeTokenIndex = UnknownOperandTokenIndex + 1;
 
     for (Token &SingleToken : TokenizedFunctionItr.second) {
       if (SingleToken.Type == TokenType::PaddingToken) {
@@ -319,13 +351,6 @@ int main(int argc, char **argv) {
         SerializedTokens.push_back(InstructionOperandIndex +
                                    InstructionDistance);
       } else if (SingleToken.Type == TokenType::ConstantIntegerOperandToken) {
-        // TODO(boomanaiden154): Make this actually read from a file rather than
-        // just looking at constants below 1000.
-        if (SingleToken.Data.ConstantIntegerValue < 1000)
-          SerializedTokens.push_back(ConstantIntegerOperandIndex +
-                                     SingleToken.Data.ConstantIntegerValue);
-        else
-          SerializedTokens.push_back(ConstantIntegerOperandSize - 1);
         if (IntegerConstantsToTokenize.count(
                 SingleToken.Data.ConstantIntegerValue) != 0) {
           SerializedTokens.push_back(
