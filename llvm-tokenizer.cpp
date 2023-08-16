@@ -44,6 +44,15 @@ static cl::opt<TokenizationModeE> TokenizationMode(
                           "representing serialized tokens.")),
     cl::init(TokenizationModeE::Tokenize));
 
+static cl::opt<std::string> IntConstantsListFilename(
+    "int-constants-list",
+    cl::desc("A list of integer constants that should be tokenized."),
+    cl::init(""));
+
+static cl::opt<uint32_t> MaxInstructionOperandReferenceDiff("max-instruction-operand-reference-diff",
+														 cl::desc("The maximum numerical difference in instruction indexes to tokenize uniquely."),
+																														cl::init(32));
+
 static ExitOnError ExitOnErr("llvm-tokenizer error: ");
 
 enum TokenType {
@@ -184,6 +193,28 @@ std::unique_ptr<ScopedPrinter> WriterFactory() {
   return std::make_unique<ScopedPrinter>(fouts());
 }
 
+std::unordered_map<int64_t, uint32_t>
+LoadIntegerConstantsFromFile(StringRef FileName) {
+  std::unordered_map<int64_t, uint32_t> IntegerConstants;
+  ErrorOr<std::unique_ptr<MemoryBuffer>> FileBufferOrErr =
+      MemoryBuffer::getFile(FileName);
+  // TODO(boomanaiden154): Better error handling here when we can't load the
+  // file for whatever reason.
+  if (!FileBufferOrErr) {
+    errs() << "Could not load integer constants file\n";
+    return IntegerConstants;
+  }
+
+  SmallVector<StringRef> IntegerConstantStrings;
+  FileBufferOrErr->get()->getBuffer().split(IntegerConstantStrings, '\n', -1,
+                                            false);
+  for (uint32_t i = 0; i < IntegerConstantStrings.size(); ++i) {
+    IntegerConstants[std::stol(IntegerConstantStrings[i].data())] = i;
+  }
+
+  return IntegerConstants;
+}
+
 int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm-tokenizer\n");
 
@@ -240,6 +271,8 @@ int main(int argc, char **argv) {
   }
 
   // We're assuming we're in serialization mode.
+  std::unordered_map<int64_t, uint32_t> IntegerConstantsToTokenize =
+      LoadIntegerConstantsFromFile(IntConstantsListFilename);
 
   Writer->arrayBegin();
   for (auto TokenizedFunctionItr : FunctionTokens) {
@@ -251,17 +284,16 @@ int main(int argc, char **argv) {
 
     // TODO(boomanaiden154): Make these constants configurable.
 
-    uint32_t ConstantIntegerOperandSize = 1002;
-    uint32_t InstructionOperandReferenceSize = 32;
+    uint32_t ConstantIntegerOperandSize = IntegerConstantsToTokenize.size();
 
     // TODO(boomanaiden154): Figure out a more elegant way of constructing this.
 
     uint32_t PaddingTokenIndex = 0;
     uint32_t InstructionOperandIndex = 1;
     uint32_t ConstantIntegerOperandIndex =
-        InstructionOperandIndex + InstructionOperandReferenceSize;
+        InstructionOperandIndex + MaxInstructionOperandReferenceDiff + 1;
     uint32_t ConstantFloatOperandIndex =
-        ConstantIntegerOperandIndex + ConstantIntegerOperandSize;
+        ConstantIntegerOperandIndex + ConstantIntegerOperandSize + 1;
     uint32_t ConstantGlobalValueOperandTokenIndex =
         ConstantFloatOperandIndex + 1;
     uint32_t UnknownConstantOperandTokenIndex = ConstantFloatOperandIndex + 1;
@@ -275,14 +307,14 @@ int main(int argc, char **argv) {
       if (SingleToken.Type == TokenType::PaddingToken) {
         SerializedTokens.push_back(PaddingTokenIndex);
       } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
-        // Get the distance from the current instruction to the instruction that
-        // is being referred to. This number will always be positive as we're in
-        // SSA.
+        // Get the distance from the current instruction to the instruction
+        // thati is being referred to. This number will always be positive as
+        // we're in SSA.
         uint32_t InstructionDistance =
             SingleToken.InstructionIndex -
             SingleToken.Data.ReferencedInstructionIndex;
-        if (InstructionDistance > InstructionOperandReferenceSize) {
-          InstructionDistance = InstructionOperandReferenceSize - 1;
+        if (InstructionDistance > MaxInstructionOperandReferenceDiff) {
+          InstructionDistance = MaxInstructionOperandReferenceDiff;
         }
         SerializedTokens.push_back(InstructionOperandIndex +
                                    InstructionDistance);
@@ -294,6 +326,16 @@ int main(int argc, char **argv) {
                                      SingleToken.Data.ConstantIntegerValue);
         else
           SerializedTokens.push_back(ConstantIntegerOperandSize - 1);
+        if (IntegerConstantsToTokenize.count(
+                SingleToken.Data.ConstantIntegerValue) != 0) {
+          SerializedTokens.push_back(
+              ConstantIntegerOperandIndex +
+              IntegerConstantsToTokenize[SingleToken.Data
+                                             .ConstantIntegerValue]);
+        } else {
+          SerializedTokens.push_back(ConstantIntegerOperandIndex +
+                                     IntegerConstantsToTokenize.size());
+        }
       } else if (SingleToken.Type == TokenType::ConstantFloatOperandToken) {
         SerializedTokens.push_back(ConstantFloatOperandIndex);
       } else if (SingleToken.Type ==
