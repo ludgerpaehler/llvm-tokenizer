@@ -31,10 +31,17 @@ define i64 @f1(i64 %a, i64 %b) {
 ; CHECK: 	   Begin: 115
 ; CHECK: 	   End: 137
 ; CHECK:   }
+; CHECK:  AttributeRange {
+; CHECK:    Begin: 138
+; CHECK:    End: 338
+; CHECK:  }
+; CHECK: FunctionStart: 339
+; CHECK: FunctionEnd: 340
 ; CHECK: }
 
 ; We should end up with the following (serialized tokens) based on the
 ; input sequence and config above.
+; 349 - Function start token
 ; 60 - The first add opcode (13+47)
 ; 128 - The output type of the first instruction. 13 is an Integer type
 ;       (128-115=13)
@@ -50,11 +57,12 @@ define i64 @f1(i64 %a, i64 %b) {
 ; 122 - The type of the return opcode, void in this case.
 ; 2 - Instruction reference operand, referencing the add instruction directly
 ;     before it.
+; 340 - Function end token
 
 ; CHECK: functions [
 ; CHECK: 	{
 ; CHECK: 		name: f1
-; CHECK: 		tokens: [60, 128, 45, 45, 60, 128, 2, 38, 48, 122, 2]
+; CHECK: 		tokens: [339, 60, 128, 45, 45, 60, 128, 2, 38, 48, 122, 2, 340]
 ; CHECK: 	}
 ; CHECK: ]
 

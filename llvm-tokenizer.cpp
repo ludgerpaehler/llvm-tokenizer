@@ -80,7 +80,9 @@ enum TokenType {
   UnknownOperandToken,
   OpcodeToken,
   TypeToken,
-  AttributeToken
+  AttributeToken,
+  FunctionStartToken,
+  FunctionEndToken
 };
 
 StringRef GetTokenTypeName(TokenType TypeInput) {
@@ -111,6 +113,10 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
     return "type";
   case TokenType::AttributeToken:
     return "attribute";
+  case TokenType::FunctionStartToken:
+    return "function_start";
+  case TokenType::FunctionEndToken:
+    return "function_end";
   }
   return "unknown_token";
 }
@@ -193,6 +199,8 @@ std::vector<Token> processFunction(Function &IRFunction) {
   std::unordered_map<Value *, size_t> InstructionIndexMapping;
   size_t InstructionIndex = 0;
 
+  FunctionTokens.push_back(Token(TokenType::FunctionStartToken, 0));
+
   for (const auto &AttrSet : IRFunction.getAttributes()) {
     for (const auto &Attr : AttrSet) {
       if (Attr.isEnumAttribute() || Attr.isIntAttribute() ||
@@ -222,6 +230,9 @@ std::vector<Token> processFunction(Function &IRFunction) {
       ++InstructionIndex;
     }
   }
+
+  FunctionTokens.push_back(Token(TokenType::FunctionEndToken, 0));
+
   return FunctionTokens;
 }
 
@@ -267,6 +278,8 @@ struct SerializationConfig {
   uint32_t OpcodeIndex;
   uint32_t TypeIndex;
   uint32_t AttributeIndex;
+  uint32_t FunctionStartIndex;
+  uint32_t FunctionEndIndex;
 
   SerializationConfig(uint32_t InstructionOperandSize,
                       uint32_t ConstantIntegerOperandSize) {
@@ -285,6 +298,8 @@ struct SerializationConfig {
     OpcodeIndex = UnknownOperandIndex + 1;
     TypeIndex = OpcodeIndex + OpcodeCount + 1;
     AttributeIndex = TypeIndex + TypeCount + 1;
+    FunctionStartIndex = AttributeIndex + AttributeCount + 1;
+    FunctionEndIndex = FunctionStartIndex + 1;
   }
 };
 
@@ -323,6 +338,8 @@ void printSerConfig(const SerializationConfig &SerConfig,
   Writer.printNumber("Begin", SerConfig.AttributeIndex);
   Writer.printNumber("End", SerConfig.AttributeIndex + AttributeCount);
   Writer.objectEnd();
+  Writer.printNumber("FunctionStart", SerConfig.FunctionStartIndex);
+  Writer.printNumber("FunctionEnd", SerConfig.FunctionEndIndex);
   Writer.objectEnd();
 }
 
@@ -335,6 +352,13 @@ void printTokenizedFunction(const std::string &FunctionName,
   for (Token SingleToken : FunctionTokens) {
     Writer.objectBegin();
     Writer.printString("type", GetTokenTypeName(SingleToken.Type));
+
+    if (SingleToken.Type == TokenType::FunctionStartToken ||
+        SingleToken.Type == TokenType::FunctionEndToken) {
+      Writer.objectEnd();
+      continue;
+    }
+
     Writer.printNumber("instruction_index", SingleToken.InstructionIndex);
     if (SingleToken.Type == TokenType::OpcodeToken) {
       Writer.printNumber("opcode", SingleToken.Data.Opcode);
@@ -412,6 +436,10 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
     } else if (SingleToken.Type == TokenType::AttributeToken) {
       SerializedTokens.push_back(SerConfig.AttributeIndex +
                                  SingleToken.Data.AttributeID);
+    } else if (SingleToken.Type == TokenType::FunctionStartToken) {
+      SerializedTokens.push_back(SerConfig.FunctionStartIndex);
+    } else if (SingleToken.Type == TokenType::FunctionEndToken) {
+      SerializedTokens.push_back(SerConfig.FunctionEndIndex);
     }
   }
 
