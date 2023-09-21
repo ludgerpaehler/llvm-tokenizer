@@ -435,6 +435,9 @@ int main(int argc, char **argv) {
   std::unordered_map<std::string, std::vector<Token>> FunctionTokens;
 
   for (Function &IRFunction : *IRModule) {
+    if (IRFunction.isDeclaration())
+      continue;
+
     FunctionTokens[IRFunction.getName().str()] = processFunction(IRFunction);
   }
 
