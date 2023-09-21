@@ -17,6 +17,7 @@ using namespace llvm;
 
 static constexpr const uint32_t OpcodeCount = 67;
 static constexpr const uint32_t TypeCount = 22;
+static constexpr const uint32_t AttributeCount = 200;
 
 enum TokenizerOutputModeE { JSON, Standard };
 
@@ -78,7 +79,8 @@ enum TokenType {
   ArgumentOperandToken,
   UnknownOperandToken,
   OpcodeToken,
-  TypeToken
+  TypeToken,
+  AttributeToken
 };
 
 StringRef GetTokenTypeName(TokenType TypeInput) {
@@ -107,6 +109,8 @@ StringRef GetTokenTypeName(TokenType TypeInput) {
     return "opcode";
   case TokenType::TypeToken:
     return "type";
+  case TokenType::AttributeToken:
+    return "attribute";
   }
   return "unknown_token";
 }
@@ -117,6 +121,7 @@ union TokenData {
   uint64_t ConstantIntegerValue;
   double ConstantFloatValue;
   uint8_t TypeID;
+  unsigned AttributeID;
 };
 
 struct Token {
@@ -187,6 +192,20 @@ std::vector<Token> processFunction(Function &IRFunction) {
   std::vector<Token> FunctionTokens;
   std::unordered_map<Value *, size_t> InstructionIndexMapping;
   size_t InstructionIndex = 0;
+
+  for (const auto &AttrSet : IRFunction.getAttributes()) {
+    for (const auto &Attr : AttrSet) {
+      if (Attr.isEnumAttribute() || Attr.isIntAttribute() ||
+          Attr.isTypeAttribute()) {
+        Token AttributeToken =
+            Token(TokenType::AttributeToken, InstructionIndex);
+        AttributeToken.Data.AttributeID =
+            static_cast<unsigned>(Attr.getKindAsEnum());
+        FunctionTokens.push_back(AttributeToken);
+      }
+    }
+  }
+
   for (BasicBlock &IRBB : IRFunction) {
     for (Instruction &IRInstruction : IRBB) {
       FunctionTokens.push_back(processOpcode(IRInstruction, InstructionIndex));
@@ -247,6 +266,7 @@ struct SerializationConfig {
   uint32_t UnknownOperandIndex;
   uint32_t OpcodeIndex;
   uint32_t TypeIndex;
+  uint32_t AttributeIndex;
 
   SerializationConfig(uint32_t InstructionOperandSize,
                       uint32_t ConstantIntegerOperandSize) {
@@ -264,6 +284,7 @@ struct SerializationConfig {
     UnknownOperandIndex = ArgumentOperandIndex + 1;
     OpcodeIndex = UnknownOperandIndex + 1;
     TypeIndex = OpcodeIndex + OpcodeCount + 1;
+    AttributeIndex = TypeIndex + TypeCount + 1;
   }
 };
 
@@ -298,6 +319,10 @@ void printSerConfig(const SerializationConfig &SerConfig,
   Writer.printNumber("Begin", SerConfig.TypeIndex);
   Writer.printNumber("End", SerConfig.TypeIndex + TypeCount);
   Writer.objectEnd();
+  Writer.objectBegin("AttributeRange");
+  Writer.printNumber("Begin", SerConfig.AttributeIndex);
+  Writer.printNumber("End", SerConfig.AttributeIndex + AttributeCount);
+  Writer.objectEnd();
   Writer.objectEnd();
 }
 
@@ -324,6 +349,8 @@ void printTokenizedFunction(const std::string &FunctionName,
                          (double)SingleToken.Data.ConstantFloatValue);
     } else if (SingleToken.Type == TokenType::TypeToken) {
       Writer.printNumber("type_id", SingleToken.Data.TypeID);
+    } else if (SingleToken.Type == TokenType::AttributeToken) {
+      Writer.printNumber("attribute_id", SingleToken.Data.AttributeID);
     }
     Writer.objectEnd();
   }
@@ -345,9 +372,9 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
       // Get the distance from the current instruction to the instruction
       // thati is being referred to. This number will always be positive as
       // we're in SSA.
-      uint32_t InstructionDistance =
-          SingleToken.InstructionIndex -
-          SingleToken.Data.ReferencedInstructionIndex;
+      int32_t InstructionDistance = SingleToken.InstructionIndex -
+                                    SingleToken.Data.ReferencedInstructionIndex;
+      assert(InstructionDistance > 0);
       if (InstructionDistance > MaxInstructionOperandReferenceDiff) {
         InstructionDistance = MaxInstructionOperandReferenceDiff;
       }
@@ -382,6 +409,9 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
                                  SingleToken.Data.Opcode);
     } else if (SingleToken.Type == TokenType::TypeToken) {
       SerializedTokens.push_back(SerConfig.TypeIndex + SingleToken.Data.TypeID);
+    } else if (SingleToken.Type == TokenType::AttributeToken) {
+      SerializedTokens.push_back(SerConfig.AttributeIndex +
+                                 SingleToken.Data.AttributeID);
     }
   }
 
