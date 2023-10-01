@@ -1,3 +1,4 @@
+#include <llvm/ADT/APFloat.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -172,8 +173,13 @@ Token processOperand(
     } else if (const ConstantFP *ConstantFloat =
                    dyn_cast<ConstantFP>(ConstantOperand)) {
       ConstantOperandToken.Type = TokenType::ConstantFloatOperandToken;
-      ConstantOperandToken.Data.ConstantFloatValue =
-          ConstantFloat->getValue().convertToDouble();
+      if (&ConstantFloat->getValue().getSemantics() != &APFloat::IEEEquad() &&
+          &ConstantFloat->getValue().getSemantics() !=
+              &APFloat::x87DoubleExtended() &&
+          &ConstantFloat->getValue().getSemantics() !=
+              &APFloat::PPCDoubleDouble())
+        ConstantOperandToken.Data.ConstantFloatValue =
+            ConstantFloat->getValue().convertToDouble();
     } else if (const GlobalValue *GV = dyn_cast<GlobalValue>(Operand)) {
       ConstantOperandToken.Type = TokenType::ConstantGlobalValueOperandToken;
     }
