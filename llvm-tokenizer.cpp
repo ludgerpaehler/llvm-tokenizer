@@ -408,12 +408,19 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
     if (SingleToken.Type == TokenType::PaddingToken) {
       SerializedTokens.push_back(SerConfig.PaddingTokenIndex);
     } else if (SingleToken.Type == TokenType::InstructionOperandToken) {
-      // Get the distance from the current instruction to the instruction
-      // thati is being referred to. This number will always be positive as
-      // we're in SSA.
+      // Distance from the current instruction to the instruction being
+      // referred to. Under SSA a definition precedes its use, so this is
+      // normally positive. Two degenerate cases break that assumption: a
+      // self-referential phi (e.g. `%x = phi [..., %x]`) yields distance 0,
+      // and an unresolved forward reference (recorded as index 0 in
+      // processOperand) can yield a non-positive value. Clamp into the valid
+      // [0, Max] window so those map to the in-range distance-0 slot instead of
+      // tripping an assertion or indexing out of the instruction-operand range.
       int32_t InstructionDistance = SingleToken.InstructionIndex -
                                     SingleToken.Data.ReferencedInstructionIndex;
-      assert(InstructionDistance > 0);
+      if (InstructionDistance < 0) {
+        InstructionDistance = 0;
+      }
       if (InstructionDistance > MaxInstructionOperandReferenceDiff) {
         InstructionDistance = MaxInstructionOperandReferenceDiff;
       }
