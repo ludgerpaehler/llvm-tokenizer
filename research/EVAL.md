@@ -1,4 +1,4 @@
 | Track | Partition | Round-trip | Mean tokens | Bytes/token |
 |-------|-----------|-----------|-------------|-------------|
-| identity | core | 8/8 | 42 | 5.73 |
-| text | core | 8/8 | 228 | 1.00 |
+| identity | core | 8/8 | 46 | 5.74 |
+| text | core | 8/8 | 243 | 1.00 |
