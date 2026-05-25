@@ -46,19 +46,22 @@ define i64 @f1(i64 %a, i64 %b) {
 
 ; The serialized token stream is LLVM-version-specific because LLVM's opcode,
 ; type, and attribute enum values differ between releases. The expected streams:
-;   LLVM 19: [232, 60, 128, 45, 45, 60, 128, 2, 38, 48, 122, 2, 233]
-;   LLVM 22: [241, 60, 128, 45, 45, 60, 128, 2, 38, 48, 123, 2, 242]
+;   LLVM 19: [232, 59, 128, 45, 45, 59, 128, 2, 38, 47, 122, 2, 233]
+;   LLVM 22: [241, 59, 128, 45, 45, 59, 128, 2, 38, 47, 123, 2, 242]
 ; Reading the LLVM 19 stream:
 ;   232 - function start token
-;   60  - the first add opcode (OpcodeIndex 47 + opcode 13)
+;   59  - the first add opcode. Opcodes are 1-based in LLVM but stored 0-based in
+;         the vocabulary (OpcodeIndex 47 + opcode 13 - 1), which reserves the
+;         slot just past the last opcode (OpcodeIndex + OpcodeCount) as the
+;         dedicated out-of-range bucket instead of aliasing the final opcode.
 ;   128 - the i64 result type of the first instruction (TypeIndex 115 + 13)
 ;   45  - argument operand (%a)
 ;   45  - argument operand (%b)
-;   60  - the second add opcode
+;   59  - the second add opcode
 ;   128 - i64 result type of the second instruction
 ;   2   - instruction reference, one instruction back (InstructionOperandIndex 1 + 1)
 ;   38  - the integer constant 5 (ConstantIntegerOperandIndex 34 + 5 - 1)
-;   48  - the ret opcode (47 + 1)
+;   47  - the ret opcode (47 + 1 - 1)
 ;   122 - the void return type (TypeIndex 115 + 7)
 ;   2   - instruction reference to the immediately preceding instruction
 ;   233 - function end token
@@ -68,7 +71,7 @@ define i64 @f1(i64 %a, i64 %b) {
 ; CHECK: functions [
 ; CHECK:   {
 ; CHECK:     name: f1
-; CHECK-19:     tokens: [232, 60, 128, 45, 45, 60, 128, 2, 38, 48, 122, 2, 233]
-; CHECK-22:     tokens: [241, 60, 128, 45, 45, 60, 128, 2, 38, 48, 123, 2, 242]
+; CHECK-19:     tokens: [232, 59, 128, 45, 45, 59, 128, 2, 38, 47, 122, 2, 233]
+; CHECK-22:     tokens: [241, 59, 128, 45, 45, 59, 128, 2, 38, 47, 123, 2, 242]
 ; CHECK:   }
 ; CHECK: ]
