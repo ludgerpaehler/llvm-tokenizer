@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        llvm: [19, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install lit and build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install lit
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libzstd-dev
+
+      - name: Install LLVM ${{ matrix.llvm }}
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ matrix.llvm }}
+          sudo apt-get install -y llvm-${{ matrix.llvm }} llvm-${{ matrix.llvm }}-dev llvm-${{ matrix.llvm }}-tools
+
+      - name: Configure
+        run: cmake -G Ninja -S . -B build -DLLVM_DIR=$(llvm-config-${{ matrix.llvm }} --cmakedir)
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: cmake --build build --target check-llvm-tokenizer
