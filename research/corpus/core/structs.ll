@@ -13,3 +13,9 @@ define i32 @first(ptr %n) {
   %v = load i32, ptr %f
   ret i32 %v
 }
+
+define i8 @firstpacked(ptr %p) {
+  %g = getelementptr %packed, ptr %p, i64 0, i32 0
+  %v = load i8, ptr %g
+  ret i8 %v
+}

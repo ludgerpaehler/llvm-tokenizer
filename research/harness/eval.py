@@ -10,7 +10,6 @@ import os
 import subprocess
 import tempfile
 
-from normalize import canonical  # noqa: F401  (kept for parity / future metrics)
 from roundtrip import roundtrip
 from tracks import TRACKS
 
