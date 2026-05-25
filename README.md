@@ -30,43 +30,34 @@ docker build -t llvm-tokenizer \
   --build-arg="ENABLE_LEGACY_RENEGOTIATION=ON" .
 ```
 
-### Building llvm-tokenizer
+### Building llvm-tokenizer natively
 
-To build `llvm-tokenizer`, perform the following steps:
+`llvm-tokenizer` builds against any installed LLVM (currently tested with LLVM 19
+and 22). You need: a C++17 compiler, `cmake`, `ninja`, `libzstd-dev`, `lit`
+(`pip install lit` or `uv tool install lit`), and an LLVM development package
+(`llvm-19-dev` / `llvm-22-dev`, which also provides `FileCheck`).
 
-1. Create a new directory for the build. `build/` is reccomended as `.gitignore`
-is setup to ignore it:
-
-```bash
-mkdir build
-cd build
-```
-
-2. Run the `cmake` configuration command:
+1. Configure, selecting the LLVM you want to build against (required when more
+   than one is installed):
 
 ```bash
-cmake -GNinja ../
+cmake -G Ninja -S . -B build -DLLVM_DIR=$(llvm-config-19 --cmakedir)
 ```
 
-3. Run the build:
+2. Build:
 
 ```bash
-cmake --build .
+cmake --build build
 ```
 
-4. That's it! The `llvm-tokenizer` binary will be in the `build/` folder.
+The `llvm-tokenizer` binary will be in `build/`.
 
-### Running the llvm-tokenizer tests
-
-The docker container contains all the necessary dependencies to run the tests
-for `llvm-tokenizer`. If you're doing a build outside of the container image,
-you'll need to make sure you have the `lit` python package and `FileCheck`
-(usually through a `llvm-dev` package) installed. After building the the
-package, you can simply run the following command in the build folder:
+### Running the tests
 
 ```bash
-cmake --build . --target check-llvm-tokenizer
+cmake --build build --target check-llvm-tokenizer
 ```
 
-That will run all the tests present in the `./test` folder.
+The tests detect the LLVM major version they were built against and check the
+matching expected token values, so the suite passes against each supported LLVM.
 
