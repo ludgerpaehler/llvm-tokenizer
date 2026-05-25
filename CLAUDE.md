@@ -11,8 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Builds against system LLVM — currently tested with **LLVM 19 and 22**. The
 opcode/type/attribute counts are derived from LLVM enums at compile time, so the
 tool tracks whatever LLVM it is built against; there is no pinned version. Native
-build needs `cmake`, `ninja`, `libzstd-dev`, `lit`, and an LLVM dev package
-(`llvm-NN-dev`, which supplies `FileCheck`). With multiple LLVMs installed, select
+build needs `cmake`, `ninja`, `libzstd-dev`, `lit`, an LLVM dev package
+(`llvm-NN-dev`) and `llvm-NN-tools` (provides the `FileCheck` binary; pulled in by
+`-dev` on Debian/Ubuntu). With multiple LLVMs installed, select
 one via `-DLLVM_DIR=$(llvm-config-19 --cmakedir)`. The Dockerfile remains as an
 option (default `LLVM_VERSION=19`, overridable via `--build-arg`).
 

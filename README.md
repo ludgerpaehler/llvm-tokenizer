@@ -34,8 +34,9 @@ docker build -t llvm-tokenizer \
 
 `llvm-tokenizer` builds against any installed LLVM (currently tested with LLVM 19
 and 22). You need: a C++17 compiler, `cmake`, `ninja`, `libzstd-dev`, `lit`
-(`pip install lit` or `uv tool install lit`), and an LLVM development package
-(`llvm-19-dev` / `llvm-22-dev`, which also provides `FileCheck`).
+(`pip install lit` or `uv tool install lit`), and an LLVM toolchain — `llvm-19-dev`
+/ `llvm-22-dev` (headers + CMake config) plus `llvm-19-tools` / `llvm-22-tools`,
+which provides the `FileCheck` binary (on Debian/Ubuntu `-dev` pulls in `-tools`).
 
 1. Configure, selecting the LLVM you want to build against (required when more
    than one is installed):
