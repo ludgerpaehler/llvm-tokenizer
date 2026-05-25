@@ -170,7 +170,6 @@ Token processOperand(
           InstructionIndexMappingItr->second;
     }
     return InstructionOperandToken;
-    return Token(TokenType::InstructionOperandToken, InstructionIndex);
   } else if (const Constant *ConstantOperand = dyn_cast<Constant>(Operand)) {
     Token ConstantOperandToken =
         Token(TokenType::UnknownConstantOperandToken, InstructionIndex);
