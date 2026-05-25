@@ -271,8 +271,22 @@ LoadIntegerConstantsFromFile(StringRef FileName) {
   SmallVector<StringRef> IntegerConstantStrings;
   FileBufferOrErr->get()->getBuffer().split(IntegerConstantStrings, '\n', -1,
                                             false);
-  for (uint32_t i = 0; i < IntegerConstantStrings.size(); ++i) {
-    IntegerConstants[std::stol(IntegerConstantStrings[i].data())] = i;
+  // Parse with StringRef::getAsInteger rather than std::stol: it is bounded by
+  // the StringRef length (the split substrings are not NUL-terminated) and
+  // reports failure instead of throwing on non-numeric or out-of-range input.
+  // Token ids are assigned densely over the lines that parse, so skipping a
+  // malformed line does not leave a gap that would push a later id onto (or
+  // past) the shared out-of-range slot.
+  uint32_t Index = 0;
+  for (StringRef ConstantString : IntegerConstantStrings) {
+    int64_t ConstantValue;
+    if (ConstantString.trim().getAsInteger(10, ConstantValue)) {
+      if (!ConstantString.trim().empty())
+        errs() << "Skipping malformed integer constant: '" << ConstantString
+               << "'\n";
+      continue;
+    }
+    IntegerConstants[ConstantValue] = Index++;
   }
 
   return IntegerConstants;
