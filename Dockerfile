@@ -1,4 +1,4 @@
-ARG LLVM_VERSION=17
+ARG LLVM_VERSION=19
 ARG CUSTOM_CERT
 ARG ENABLE_LEGACY_RENEGOTIATION
 
@@ -21,6 +21,7 @@ RUN apt-get -q update \
     g++ \
     ninja-build \
     zlib1g-dev \
+    libzstd-dev \
     python3 \
     python3-pip
 
