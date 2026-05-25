@@ -444,20 +444,32 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
     } else if (SingleToken.Type == TokenType::UnknownOperandToken) {
       SerializedTokens.push_back(SerConfig.UnknownOperandIndex);
     } else if (SingleToken.Type == TokenType::OpcodeToken) {
+      // LLVM opcodes are 1-based (1..OpcodeCount). Store them 0-based so the
+      // valid ids occupy OpcodeIndex + [0, OpcodeCount) and the slot at
+      // OpcodeIndex + OpcodeCount is a dedicated out-of-range bucket. An
+      // out-of-range opcode therefore degrades to that bucket instead of
+      // aliasing the last valid opcode.
       uint32_t Opcode = SingleToken.Data.Opcode;
-      if (Opcode > OpcodeCount)
-        Opcode = OpcodeCount;
-      SerializedTokens.push_back(SerConfig.OpcodeIndex + Opcode);
+      if (Opcode < 1 || Opcode > OpcodeCount)
+        SerializedTokens.push_back(SerConfig.OpcodeIndex + OpcodeCount);
+      else
+        SerializedTokens.push_back(SerConfig.OpcodeIndex + (Opcode - 1));
     } else if (SingleToken.Type == TokenType::TypeToken) {
+      // Type ids are 0-based (0..TypeCount-1); the slot at TypeIndex +
+      // TypeCount is the dedicated out-of-range bucket.
       uint32_t TypeID = SingleToken.Data.TypeID;
-      if (TypeID > TypeCount)
-        TypeID = TypeCount;
-      SerializedTokens.push_back(SerConfig.TypeIndex + TypeID);
+      if (TypeID >= TypeCount)
+        SerializedTokens.push_back(SerConfig.TypeIndex + TypeCount);
+      else
+        SerializedTokens.push_back(SerConfig.TypeIndex + TypeID);
     } else if (SingleToken.Type == TokenType::AttributeToken) {
+      // Attribute ids are 0-based (0..AttributeCount-1); the slot at
+      // AttributeIndex + AttributeCount is the dedicated out-of-range bucket.
       uint32_t AttributeID = SingleToken.Data.AttributeID;
-      if (AttributeID > AttributeCount)
-        AttributeID = AttributeCount;
-      SerializedTokens.push_back(SerConfig.AttributeIndex + AttributeID);
+      if (AttributeID >= AttributeCount)
+        SerializedTokens.push_back(SerConfig.AttributeIndex + AttributeCount);
+      else
+        SerializedTokens.push_back(SerConfig.AttributeIndex + AttributeID);
     } else if (SingleToken.Type == TokenType::FunctionStartToken) {
       SerializedTokens.push_back(SerConfig.FunctionStartIndex);
     } else if (SingleToken.Type == TokenType::FunctionEndToken) {

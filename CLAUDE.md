@@ -54,10 +54,14 @@ Things that drive the layout and are easy to get wrong:
 - The opcode/type/attribute range sizes are derived from LLVM enums at compile
   time: `OpcodeCount = Instruction::OtherOpsEnd - 1`,
   `TypeCount = Type::TargetExtTyID + 1`, `AttributeCount = Attribute::EndAttrKinds`.
-  The serializer clamps each ID into its range, so an unexpected enum value
-  degrades safely instead of colliding into the next range. **Token values are
-  therefore LLVM-version-specific** (e.g. LLVM 22 dropped `X86_MMXTyID`, shifting
-  every later type ID) — tokens from different LLVM versions are not comparable.
+  Each range stores its valid ids 0-based and reserves the slot just past them
+  (`<Range>Index + <Range>Count`) as a **dedicated out-of-range bucket**; an
+  unexpected enum value degrades to that bucket instead of aliasing the last
+  valid id or colliding into the next range. Opcodes are 1-based in LLVM, so they
+  are rebased by one on the way in (`OpcodeIndex + opcode - 1`). **Token values
+  are therefore LLVM-version-specific** (e.g. LLVM 22 dropped `X86_MMXTyID`,
+  shifting every later type ID) — tokens from different LLVM versions are not
+  comparable.
 - **Instruction references are encoded as a distance**, `InstructionIndex - ReferencedInstructionIndex`, clamped to `-max-instruction-operand-reference-diff` (default 32). This assumes SSA so the distance is positive; an operand whose definition wasn't recorded falls back to index 0 (known limitation, see TODO in `processOperand`).
 - **Integer constants** only get unique tokens if listed in the `-int-constants-list` file (newline-separated); every other integer maps to a single shared "out of range" slot at the end of the range.
 - **Floats wider than 64-bit** (IEEEquad, x87 extended, PPC double-double) are deliberately left unconverted to avoid a crash, so their `ConstantFloatValue` is unset.

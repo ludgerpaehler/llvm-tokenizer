@@ -11,5 +11,7 @@ define i64 @f2(i64 %a, i64 %b) optnone {
 ; CHECK-19: attribute_id: 46
 ; CHECK-22: attribute_id: 50
 
-; CHECK-SERIALIZED-19: tokens: [227, 179, 55, 123, 40, 40, 43, 117, 2, 228]
-; CHECK-SERIALIZED-22: tokens: [236, 183, 55, 123, 40, 40, 43, 118, 2, 237]
+; The two opcode tokens (add, ret) are stored 0-based; every other token,
+; including the optnone attribute, is unchanged.
+; CHECK-SERIALIZED-19: tokens: [227, 179, 54, 123, 40, 40, 42, 117, 2, 228]
+; CHECK-SERIALIZED-22: tokens: [236, 183, 54, 123, 40, 40, 42, 118, 2, 237]
