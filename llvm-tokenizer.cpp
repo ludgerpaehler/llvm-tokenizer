@@ -1,7 +1,10 @@
 #include <llvm/ADT/APFloat.h>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/Instruction.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/Type.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Error.h>
@@ -16,9 +19,15 @@
 
 using namespace llvm;
 
-static constexpr const uint32_t OpcodeCount = 67;
-static constexpr const uint32_t TypeCount = 22;
-static constexpr const uint32_t AttributeCount = 200;
+static constexpr const uint32_t OpcodeCount =
+    static_cast<uint32_t>(Instruction::OtherOpsEnd) - 1;
+// TargetExtTyID is assumed to be the last TypeID enumerator; LLVM provides no
+// count sentinel for TypeID (unlike Attribute::EndAttrKinds). If a new TypeID
+// is ever added after TargetExtTyID, update this line and regenerate goldens.
+static constexpr const uint32_t TypeCount =
+    static_cast<uint32_t>(Type::TargetExtTyID) + 1;
+static constexpr const uint32_t AttributeCount =
+    static_cast<uint32_t>(Attribute::EndAttrKinds);
 
 enum TokenizerOutputModeE { JSON, Standard };
 
@@ -435,13 +444,20 @@ std::vector<uint32_t> SerializeFunctionFromTokens(
     } else if (SingleToken.Type == TokenType::UnknownOperandToken) {
       SerializedTokens.push_back(SerConfig.UnknownOperandIndex);
     } else if (SingleToken.Type == TokenType::OpcodeToken) {
-      SerializedTokens.push_back(SerConfig.OpcodeIndex +
-                                 SingleToken.Data.Opcode);
+      uint32_t Opcode = SingleToken.Data.Opcode;
+      if (Opcode > OpcodeCount)
+        Opcode = OpcodeCount;
+      SerializedTokens.push_back(SerConfig.OpcodeIndex + Opcode);
     } else if (SingleToken.Type == TokenType::TypeToken) {
-      SerializedTokens.push_back(SerConfig.TypeIndex + SingleToken.Data.TypeID);
+      uint32_t TypeID = SingleToken.Data.TypeID;
+      if (TypeID > TypeCount)
+        TypeID = TypeCount;
+      SerializedTokens.push_back(SerConfig.TypeIndex + TypeID);
     } else if (SingleToken.Type == TokenType::AttributeToken) {
-      SerializedTokens.push_back(SerConfig.AttributeIndex +
-                                 SingleToken.Data.AttributeID);
+      uint32_t AttributeID = SingleToken.Data.AttributeID;
+      if (AttributeID > AttributeCount)
+        AttributeID = AttributeCount;
+      SerializedTokens.push_back(SerConfig.AttributeIndex + AttributeID);
     } else if (SingleToken.Type == TokenType::FunctionStartToken) {
       SerializedTokens.push_back(SerConfig.FunctionStartIndex);
     } else if (SingleToken.Type == TokenType::FunctionEndToken) {

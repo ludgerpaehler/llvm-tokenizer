@@ -1,5 +1,5 @@
-; RUN: %llvm-tokenizer %s | FileCheck %s
-; RUN: %llvm-tokenizer -output-mode=json -pretty-print %s | FileCheck %s -check-prefix=CHECK-JSON
+; RUN: %llvm-tokenizer %s | FileCheck %s --check-prefixes=CHECK,CHECK-%llvm_major
+; RUN: %llvm-tokenizer -output-mode=json -pretty-print %s | FileCheck %s --check-prefixes=CHECK-JSON,CHECK-JSON-%llvm_major
 
 define i64 @f2(i64 %a, i64 %b) {
   %sum = add i64 %a, %b
@@ -18,7 +18,8 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK:       {
 ; CHECK:         type: type
 ; CHECK:         instruction_index: 0
-; CHECK:         type_id: 13
+; CHECK-19:         type_id: 13
+; CHECK-22:         type_id: 12
 ; CHECK:       }
 ; CHECK:       {
 ; CHECK:         type: argument_operand
@@ -60,7 +61,8 @@ define i64 @f2(i64 %a, i64 %b) {
 ; CHECK-JSON:         {
 ; CHECK-JSON:           "type": "type",
 ; CHECK-JSON:           "instruction_index": 0,
-; CHECK-JSON:           "type_id": 13
+; CHECK-JSON-19:           "type_id": 13
+; CHECK-JSON-22:           "type_id": 12
 ; CHECK-JSON:         },
 ; CHECK-JSON:         {
 ; CHECK-JSON:           "type": "argument_operand",
