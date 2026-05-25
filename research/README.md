@@ -10,8 +10,9 @@ shared structural round-trip gate. See
 - `text-codec/` Track C: reversible byte-level codec
 
 ## Quick start
-    python -m venv .venv && . .venv/bin/activate
+    python3 -m venv .venv && . .venv/bin/activate
     pip install -r harness/requirements.txt -r text-codec/requirements.txt
     export LLVM_BIN=/usr/lib/llvm-22/bin
+    export PYTHONPATH="$PWD/harness:$PWD/text-codec"   # cross-track imports
     pytest harness text-codec                 # unit + round-trip tests
-    python harness/eval.py --llvm-bin $LLVM_BIN   # comparison table
+    python3 harness/eval.py --llvm-bin $LLVM_BIN   # comparison table

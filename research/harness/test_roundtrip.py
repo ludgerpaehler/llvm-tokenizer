@@ -18,3 +18,12 @@ def test_identity_track_round_trips_all_core():
         module = os.path.join(CORPUS, name)
         ok, diff = roundtrip("identity", module, LLVM_BIN)
         assert ok, f"{name} failed identity round-trip:\n{diff}"
+
+
+def test_text_track_round_trips_all_core():
+    for name in sorted(os.listdir(CORPUS)):
+        if not name.endswith(".ll"):
+            continue
+        module = os.path.join(CORPUS, name)
+        ok, diff = roundtrip("text", module, LLVM_BIN)
+        assert ok, f"{name} failed text round-trip:\n{diff}"
