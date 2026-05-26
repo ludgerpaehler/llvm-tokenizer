@@ -7,9 +7,11 @@
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/Instruction.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Value.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/Support/raw_ostream.h>
@@ -21,7 +23,6 @@
 
 namespace structured_codec {
 
-// Walks a Module and emits the token stream.
 class Encoder {
 public:
   std::vector<uint32_t> encode(llvm::Module &M);
@@ -30,7 +31,6 @@ private:
   std::vector<uint32_t> tokens_;
   std::vector<llvm::Type *> type_table_;
   llvm::DenseMap<llvm::Type *, uint32_t> type_index_;
-
   uint64_t next_value_index_ = 0;
   llvm::DenseMap<llvm::Value *, uint64_t> value_index_;
 
@@ -38,7 +38,9 @@ private:
   void emitTypeDef(llvm::Type *T);
   void emitNameLiteral(llvm::StringRef name);
   uint64_t recordValue(llvm::Value *V);
+  uint64_t indexOf(llvm::Value *V);
   void emitFunction(llvm::Function &F);
+  void emitInstr(llvm::Instruction &I);
 };
 
 uint32_t Encoder::internType(llvm::Type *T) {
@@ -98,9 +100,38 @@ uint64_t Encoder::recordValue(llvm::Value *V) {
   return idx;
 }
 
+uint64_t Encoder::indexOf(llvm::Value *V) {
+  auto it = value_index_.find(V);
+  if (it == value_index_.end()) {
+    std::fprintf(stderr, "encode: value not in index (M0 does not yet handle "
+                          "globals/constants/forward refs)\n");
+    std::exit(2);
+  }
+  return it->second;
+}
+
+void Encoder::emitInstr(llvm::Instruction &I) {
+  // Intern the result type FIRST so any new TYPEDEF records land before the
+  // INSTR record. Inlining internType() into the varint argument lets a
+  // newly-emitted TYPEDEF sneak between INSTR's opcode and result-type fields,
+  // which corrupts the record stream.
+  uint32_t ty_idx = internType(I.getType());
+
+  tokens_.push_back(encodeTag(Tag::INSTR));
+  tokens_.push_back(encodeOpcode(static_cast<uint32_t>(I.getOpcode())));
+  emitVarint(tokens_, ty_idx);
+  emitNameLiteral(I.getName());
+  // Operands: M0 handles value-typed operands only (no constants, no BB
+  // labels, no metadata). For identity-smoke that's exactly what we have.
+  for (unsigned i = 0, e = I.getNumOperands(); i != e; ++i) {
+    llvm::Value *V = I.getOperand(i);
+    tokens_.push_back(encodeTag(Tag::REF));
+    emitVarint(tokens_, indexOf(V));
+  }
+  recordValue(&I);
+}
+
 void Encoder::emitFunction(llvm::Function &F) {
-  // Intern the function type FIRST (this emits its TYPEDEFs, including ret +
-  // params, before FUNC_BEGIN).
   uint32_t fty_index = internType(F.getFunctionType());
 
   tokens_.push_back(encodeTag(Tag::FUNC_BEGIN));
@@ -118,7 +149,7 @@ void Encoder::emitFunction(llvm::Function &F) {
     tokens_.push_back(encodeTag(Tag::BLOCK_BEGIN));
     emitNameLiteral(BB.getName());
     recordValue(&BB);
-    // Instructions emitted in T7.
+    for (llvm::Instruction &I : BB) emitInstr(I);
   }
 
   tokens_.push_back(encodeTag(Tag::FUNC_END));
@@ -133,7 +164,7 @@ std::vector<uint32_t> Encoder::encode(llvm::Module &M) {
 
   tokens_.push_back(encodeTag(Tag::MODULE_BEGIN));
   for (llvm::Function &F : M) {
-    if (F.isDeclaration()) continue; // M0 ignores declarations
+    if (F.isDeclaration()) continue;
     emitFunction(F);
   }
   tokens_.push_back(encodeTag(Tag::MODULE_END));
