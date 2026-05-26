@@ -27,3 +27,9 @@ def test_text_track_round_trips_all_core():
         module = os.path.join(CORPUS, name)
         ok, diff = roundtrip("text", module, LLVM_BIN)
         assert ok, f"{name} failed text round-trip:\n{diff}"
+
+
+def test_structured_track_round_trips_identity_smoke():
+    module = os.path.join(CORPUS, "identity-smoke.ll")
+    ok, diff = roundtrip("structured", module, LLVM_BIN)
+    assert ok, f"identity-smoke failed structured round-trip:\n{diff}"

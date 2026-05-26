@@ -7,6 +7,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
@@ -42,6 +43,7 @@ private:
   uint64_t readVar() { return readVarint(*tokens_, pos_); }
   std::string readNameLiteral();
 
+  llvm::Value *readValueRef();
   void readTypeDef();
   void readFunc();
 };
@@ -59,6 +61,24 @@ std::string Decoder::readNameLiteral() {
   for (size_t i = 0; i < n; ++i)
     s[i] = static_cast<char>(decodeByte((*tokens_)[pos_++]));
   return s;
+}
+
+llvm::Value *Decoder::readValueRef() {
+  Tag t = readTag();
+  if (t != Tag::REF) {
+    std::fprintf(stderr, "decode: expected REF, got tag %u\n",
+                 static_cast<unsigned>(t));
+    std::exit(2);
+  }
+  uint64_t idx = readVar();
+  if (idx >= values_.size()) {
+    std::fprintf(stderr,
+                 "decode: REF %llu out of range (size %zu) - forward refs "
+                 "not yet supported in M0\n",
+                 static_cast<unsigned long long>(idx), values_.size());
+    std::exit(2);
+  }
+  return values_[static_cast<size_t>(idx)];
 }
 
 void Decoder::readTypeDef() {
@@ -131,10 +151,51 @@ void Decoder::readFunc() {
       values_.push_back(current_bb);
       break;
     }
-    case Tag::INSTR:
-      // T9 fills this in.
-      std::fprintf(stderr, "decode: INSTR not yet implemented (Task 9)\n");
-      std::exit(2);
+    case Tag::INSTR: {
+      uint32_t opcode = decodeOpcode((*tokens_)[pos_++]);
+      uint64_t ty_idx = readVar();
+      llvm::Type *resTy = type_table_[static_cast<size_t>(ty_idx)];
+      std::string in = readNameLiteral();
+      // Read REF operands until the next tag isn't REF.
+      std::vector<llvm::Value *> ops;
+      while (pos_ < tokens_->size() && peekTag() == Tag::REF)
+        ops.push_back(readValueRef());
+
+      if (!current_bb) {
+        std::fprintf(stderr, "decode: INSTR before any BLOCK_BEGIN\n");
+        std::exit(2);
+      }
+      llvm::IRBuilder<> B(current_bb);
+      llvm::Instruction *new_inst = nullptr;
+      switch (opcode) {
+      case llvm::Instruction::Add: {
+        if (ops.size() != 2) {
+          std::fprintf(stderr, "decode: Add expects 2 ops, got %zu\n",
+                       ops.size());
+          std::exit(2);
+        }
+        new_inst = llvm::cast<llvm::Instruction>(
+            B.CreateAdd(ops[0], ops[1], in));
+        break;
+      }
+      case llvm::Instruction::Ret: {
+        if (ops.empty()) new_inst = B.CreateRetVoid();
+        else if (ops.size() == 1) new_inst = B.CreateRet(ops[0]);
+        else {
+          std::fprintf(stderr, "decode: Ret expects 0 or 1 ops\n");
+          std::exit(2);
+        }
+        (void)resTy; // ret's result type isn't passed to IRBuilder explicitly
+        break;
+      }
+      default:
+        std::fprintf(stderr, "decode: M0 cannot yet build opcode %u\n",
+                     opcode);
+        std::exit(2);
+      }
+      values_.push_back(new_inst);
+      break;
+    }
     case Tag::FUNC_END:
       return;
     default:
