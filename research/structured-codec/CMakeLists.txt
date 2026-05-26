@@ -22,6 +22,7 @@ add_library(structured_codec_lib STATIC
   encoder.cpp
   decoder.cpp
 )
+target_include_directories(structured_codec_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 llvm_map_components_to_libnames(STRUCTURED_CODEC_LLVM_LIBS support core irreader)
 target_link_libraries(structured_codec_lib PUBLIC ${STRUCTURED_CODEC_LLVM_LIBS})
 
