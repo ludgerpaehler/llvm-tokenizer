@@ -34,11 +34,13 @@ def _token_count(track, module, llvm_bin):
             return None
 
 
-def evaluate(tracks, partitions, llvm_bin):
+def evaluate(tracks, partitions, llvm_bin, per_track_modules):
     rows = []
     for track in tracks:
         for part in partitions:
-            mods = _modules(part)
+            all_mods = _modules(part)
+            subset = per_track_modules.get(track)
+            mods = [m for m in all_mods if subset is None or os.path.basename(m) in subset]
             passes, lengths, ratios = 0, [], []
             for m in mods:
                 ok, _ = roundtrip(track, m, llvm_bin)
@@ -66,8 +68,21 @@ def main(argv=None):
     ap.add_argument("--tracks", default="identity,text")
     ap.add_argument("--partitions", default="core")
     ap.add_argument("--llvm-bin", default=os.environ.get("LLVM_BIN", "/usr/lib/llvm-22/bin"))
+    ap.add_argument(
+        "--modules-for-track",
+        action="append",
+        default=[],
+        help="Limit one track to a CSV of module basenames: e.g. structured=identity-smoke.ll",
+    )
     args = ap.parse_args(argv)
-    rows = evaluate(args.tracks.split(","), args.partitions.split(","), args.llvm_bin)
+    per_track_modules = {}
+    for spec in args.modules_for_track:
+        track, csv = spec.split("=", 1)
+        per_track_modules[track] = set(csv.split(","))
+    rows = evaluate(
+        args.tracks.split(","), args.partitions.split(","), args.llvm_bin,
+        per_track_modules,
+    )
     print(render(rows))
     return 0
 

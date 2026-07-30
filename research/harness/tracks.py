@@ -16,3 +16,12 @@ TRACKS = {
         "decode": [PY, "-m", "text_codec", "decode"],
     },
 }
+
+import os as _os
+_REPO = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+_STRUCTURED_BIN = _os.path.join(_REPO, "research", "structured-codec", ".build", "structured-codec")
+
+TRACKS["structured"] = {
+    "encode": [_STRUCTURED_BIN, "encode"],
+    "decode": [_STRUCTURED_BIN, "decode"],
+}
