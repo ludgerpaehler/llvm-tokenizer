@@ -1,0 +1,15 @@
+name: llvm-tok-exp
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - snakemake-minimal>=8
+  - tokenizers>=0.20
+  - pandas>=2
+  - matplotlib>=3.8
+  - pytest>=8
+  - pyyaml>=6
+  - tiktoken>=0.7
+  # LLVM assembler/disassembler (llvm-as/llvm-dis) is provided externally via
+  # LLVM_BIN (default /usr/lib/llvm-22/bin). See README for the version note.

@@ -1,0 +1,38 @@
+# Track C vocab-size sweep campaign.
+#
+# One trained byte-level BPE model per vocab size, evaluated over each corpus
+# partition. Every parameter that shapes a run lives here so results are
+# traceable to a single config file.
+
+campaign: vocab_sweep
+
+# Byte-level BPE vocab sizes to sweep. 256 is the floor (all base bytes, no
+# merges); larger sizes learn merges that shorten sequences.
+vocab_sizes:
+  - 256
+  - 512
+  - 1024
+  - 2000
+  - 4000
+
+# Corpus partitions under research/corpus/ to evaluate against.
+partitions:
+  - core
+  - metadata
+
+# Include the raw-byte identity baseline (no trained model) as a reference row.
+include_identity_baseline: true
+
+# OpenAI tiktoken encodings to include as external comparison rows. These are
+# fixed pretrained tokenizers (no training, no vocab sweep); each row lands on
+# the vocab axis at its own n_vocab. First run downloads encodings to the
+# default tiktoken cache.
+tiktoken_encodings:
+  - gpt2
+  - p50k_base
+  - cl100k_base
+  - o200k_base
+
+# Path to LLVM bin dir holding llvm-as/llvm-dis. Overridden by the LLVM_BIN
+# environment variable when set (see Snakefile).
+llvm_bin: /usr/lib/llvm-22/bin
