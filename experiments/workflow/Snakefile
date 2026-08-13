@@ -1,0 +1,135 @@
+# Track C vocab-size sweep campaign.
+#
+# DAG:  train (1 job / vocab)  ->  eval_config (1 job / cell)  ->  aggregate  ->  plot
+#
+# Task parallelism comes free from the DAG: each trained model and each
+# (vocab, partition) evaluation is an independent job, so `snakemake -jN` fans
+# them out across N cores. Reproducibility comes from the pinned conda env
+# (environment.yml), the single config file, and the provenance block that
+# aggregate.py stamps into results.json.
+
+import os
+
+configfile: os.path.join(workflow.basedir, "..", "config", "vocab_sweep.yaml")
+
+# LLVM_BIN env var wins over the config default so the same config runs against
+# whatever LLVM is installed locally.
+LLVM_BIN = os.environ.get("LLVM_BIN", config["llvm_bin"])
+
+CAMPAIGN = config["campaign"]
+VOCAB_SIZES = [int(v) for v in config["vocab_sizes"]]
+PARTITIONS = list(config["partitions"])
+INCLUDE_IDENTITY = bool(config.get("include_identity_baseline", True))
+TIKTOKEN_ENCODINGS = list(config.get("tiktoken_encodings", []))
+
+REPO_ROOT = os.path.abspath(os.path.join(workflow.basedir, "..", ".."))
+CORPUS_DIR = os.path.join(REPO_ROOT, "research", "corpus")
+SCRIPTS = os.path.join(workflow.basedir, "scripts")
+RESULTS = os.path.join(REPO_ROOT, "experiments", "results", CAMPAIGN)
+
+
+# Partition names are a fixed closed set; constraining them keeps the
+# {encoding}_{partition} filename split unambiguous (encoding names contain
+# underscores, e.g. cl100k_base).
+wildcard_constraints:
+    partition="|".join(PARTITIONS),
+    encoding="|".join(TIKTOKEN_ENCODINGS) if TIKTOKEN_ENCODINGS else "$^",
+
+
+def _metric_targets():
+    targets = [
+        os.path.join(RESULTS, "metrics", f"text_vocab-{v}_{p}.json")
+        for v in VOCAB_SIZES
+        for p in PARTITIONS
+    ]
+    if INCLUDE_IDENTITY:
+        targets += [
+            os.path.join(RESULTS, "metrics", f"identity_{p}.json")
+            for p in PARTITIONS
+        ]
+    targets += [
+        os.path.join(RESULTS, "metrics", f"tiktoken_{e}_{p}.json")
+        for e in TIKTOKEN_ENCODINGS
+        for p in PARTITIONS
+    ]
+    return targets
+
+
+rule all:
+    input:
+        os.path.join(RESULTS, "results.csv"),
+        os.path.join(RESULTS, "results.json"),
+        os.path.join(RESULTS, "plots", ".done"),
+
+
+rule train:
+    input:
+        corpus=CORPUS_DIR,
+    output:
+        model=os.path.join(RESULTS, "models", "vocab-{vocab}", "model.json"),
+    params:
+        vocab_size=lambda wc: int(wc.vocab),
+    script:
+        os.path.join(SCRIPTS, "train_model.py")
+
+
+rule eval_text:
+    input:
+        model=os.path.join(RESULTS, "models", "vocab-{vocab}", "model.json"),
+    output:
+        metrics=os.path.join(RESULTS, "metrics", "text_vocab-{vocab}_{partition}.json"),
+    params:
+        track="text",
+        partition=lambda wc: wc.partition,
+        vocab_size=lambda wc: int(wc.vocab),
+        llvm_bin=LLVM_BIN,
+    script:
+        os.path.join(SCRIPTS, "eval_config.py")
+
+
+rule eval_identity:
+    output:
+        metrics=os.path.join(RESULTS, "metrics", "identity_{partition}.json"),
+    params:
+        track="identity",
+        partition=lambda wc: wc.partition,
+        vocab_size=None,
+        llvm_bin=LLVM_BIN,
+    script:
+        os.path.join(SCRIPTS, "eval_config.py")
+
+
+rule eval_tiktoken:
+    output:
+        metrics=os.path.join(RESULTS, "metrics", "tiktoken_{encoding}_{partition}.json"),
+    params:
+        track="tiktoken",
+        partition=lambda wc: wc.partition,
+        encoding=lambda wc: wc.encoding,
+        llvm_bin=LLVM_BIN,
+    script:
+        os.path.join(SCRIPTS, "eval_config.py")
+
+
+rule aggregate:
+    input:
+        metrics=_metric_targets(),
+    output:
+        csv=os.path.join(RESULTS, "results.csv"),
+        json=os.path.join(RESULTS, "results.json"),
+    params:
+        config=config,
+        llvm_bin=LLVM_BIN,
+    script:
+        os.path.join(SCRIPTS, "aggregate.py")
+
+
+rule plot:
+    input:
+        csv=os.path.join(RESULTS, "results.csv"),
+    output:
+        sentinel=os.path.join(RESULTS, "plots", ".done"),
+    params:
+        plot_dir=os.path.join(RESULTS, "plots"),
+    script:
+        os.path.join(SCRIPTS, "plot.py")
